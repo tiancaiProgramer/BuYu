@@ -1,0 +1,32 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    // Older dependencies predate AGP's mandatory namespace declaration.
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android.compileSdkVersion = 34
+            if (project.name == 'on_audio_query_android') {
+                project.android.compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+                project.android.kotlinOptions { jvmTarget = '17' }
+            }
+        }
+        if (project.hasProperty('android') && project.android.namespace == null) {
+            def manifest = project.file('src/main/AndroidManifest.xml')
+            if (manifest.exists()) {
+                project.android.namespace = new XmlParser().parse(manifest).attribute('package')
+            }
+        }
+    }
+}
+subprojects { project.evaluationDependsOn(':app') }
+tasks.register("clean", Delete) { delete rootProject.buildDir }

@@ -1,0 +1,5 @@
+# Copy to key.properties and supply your own signing configuration.
+storeFile=/absolute/path/to/your-signing-key.jks
+storePassword=REPLACE_WITH_YOUR_STORE_PASSWORD
+keyPassword=REPLACE_WITH_YOUR_KEY_PASSWORD
+keyAlias=REPLACE_WITH_YOUR_KEY_ALIAS
