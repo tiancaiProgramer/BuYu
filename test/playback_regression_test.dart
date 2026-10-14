@@ -260,6 +260,28 @@ void main() {
         contains(MediaAction.skipToQueueItem));
   });
 
+  test('TV native fast-forward and rewind seek instead of invoking favorites',
+      () async {
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(
+        player: player,
+        box: box,
+        restoreQueue: false,
+        television: true,
+        urlResolver: (_) async => 'https://example.test/song.mp3');
+    await handler.changeQueueLists(songs);
+    expect(handler.playbackState.value.controls.map((e) => e.action),
+        containsAll([MediaAction.fastForward, MediaAction.rewind]));
+    expect(handler.playbackState.value.androidCompactActionIndices, [0, 1, 2]);
+    await handler.seek(const Duration(seconds: 175));
+    await handler.fastForward();
+    expect(player.position, const Duration(minutes: 3));
+    await handler.seek(const Duration(seconds: 5));
+    await handler.rewind();
+    expect(player.position, Duration.zero);
+  });
+
   test('natural repeat and manual next have different behavior', () async {
     await handler.changeQueueLists(songs);
     await handler.setRepeatMode(AudioServiceRepeatMode.one);

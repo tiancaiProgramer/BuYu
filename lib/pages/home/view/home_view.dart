@@ -1,3 +1,4 @@
+import '../../wide/wide_home.dart';
 import 'dart:ui';
 
 import 'package:bujuan/common/constants/platform_utils.dart';
@@ -30,53 +31,7 @@ class HomeView extends GetView<Home> {
     if (bottomHeight == 0 && PlatformUtils.isAndroid || PlatformUtils.isIOS) bottomHeight = 32.w;
     return Material(
         child: Home.to.landscape
-            ? Stack(
-                children: [
-                  Obx(() => SimpleExtendedImage(
-                        Home.to.mediaItem.value.extras?['image'] ?? '',
-                        fit: BoxFit.cover,
-                        width: Get.width,
-                        height: Get.height,
-                      )),
-                  Container(
-                    width: Get.width,
-                    height: Get.height,
-                    color: Theme.of(context).scaffoldBackgroundColor.withOpacity(.7),
-                  ),
-                  Obx(() => AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [
-                            controller.rx.value.lightVibrantColor?.color.withOpacity(.4) ??
-                                controller.rx.value.lightVibrantColor?.color.withOpacity(.4) ??
-                                controller.rx.value.lightMutedColor?.color.withOpacity(.4) ??
-                                Colors.transparent,
-                            controller.rx.value.darkVibrantColor?.color.withOpacity(.4) ??
-                                controller.rx.value.darkMutedColor?.color.withOpacity(.4) ??
-                                controller.rx.value.lightVibrantColor?.color.withOpacity(.4) ??
-                                Colors.transparent,
-                          ], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                          // borderRadius: BorderRadius.only(topLeft: Radius.circular(25.w), topRight: Radius.circular(25.w)),
-                        ),
-                      )),
-                  BackdropFilter(filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22), child: Container()),
-                  Row(
-                    children: [
-                      const MenuViewL(),
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: controller.landscape ? controller.panelAlbumPadding * 2 : 0),
-                          child: const SafeArea(child: BodyView()),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 750.w,
-                        child: const TestView(),
-                      ),
-                    ],
-                  )
-                ],
-              )
+            ? const WideHome()
             : ZoomDrawer(
                 moveMenuScreen: false,
                 menuScreen: const MenuView(),

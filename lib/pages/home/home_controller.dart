@@ -1,3 +1,4 @@
+import '../../common/display_mode.dart';
 import 'package:on_audio_edit/on_audio_edit.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -48,7 +49,7 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   double panelAlbumPadding = 15.w; //专辑图片左右上下的边距
 
   //是否是横屏
-  bool landscape = PlatformUtils.isMacOS || PlatformUtils.isWindows || OtherUtils.isPad();
+  bool get landscape => DisplayMode.isWide;
 
   final List<LeftMenu> leftMenus = [
     LeftMenu('个人中心', TablerIcons.user, Routes.user, '/home/user'),
@@ -308,7 +309,9 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
       if (!onMove.value && lyricsLineModels.isNotEmpty) {
         int index = lyricsLineModels.indexOf(lyricsLineModels.firstWhere((element) => element.startTime! >= duration.value.inMilliseconds, orElse: () => lyricsLineModels.last));
         if (index != -1 && index != lastIndex) {
-          lyricScrollController.animateToItem((index > 0 ? index - 1 : index), duration: const Duration(milliseconds: 500), curve: Curves.linear);
+          if (lyricScrollController.hasClients) {
+            lyricScrollController.animateToItem((index > 0 ? index - 1 : index), duration: const Duration(milliseconds: 500), curve: Curves.linear);
+          }
           lastIndex = index;
           if (topLyric.value) currLyric.value = lyricsLineModels[(index > 0 ? index - 1 : index)].mainText ?? '';
         }

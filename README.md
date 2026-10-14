@@ -6,11 +6,19 @@
 
 从 [Releases](https://github.com/tiancaiProgramer/bujuan-fixed/releases/latest) 下载 `bujuan-2.0.5-fixed.apk`。
 
-- 当前版本：2.0.5，内部版本号 2039。
+- 稳定修复版本：2.0.5，内部版本号 2039；本分支横屏 / TV 试用版本号为 2040。
 - 精简安装包约 13.24 MB，较此前修复包减少约 53%，小于本次提供的原版约 16.44 MB。
 - Android 5.0 及以上，arm64-v8a；在小米 15 / Android 16 / HyperOS 3.0.307.0 上检查。
 - 交付 APK 与本次提供的原 2.0.5 APK 签名一致，支持覆盖安装并保留应用数据。
 - 自行编译需要自行配置签名，参考 `android/key.properties.example`；源码不包含签名密钥或密码。
+
+## 横屏与 TV 试用版
+
+[下载 2040 预发布](https://github.com/tiancaiProgramer/bujuan-fixed/releases/tag/v2.0.5-wide-tv-preview.2040)。手机 / 车机版随窗口方向切换布局，手机竖屏沿用原界面；TV 版为独立应用 `com.sixbugs.bujuan.tv`，支持电视桌面启动与方向键操作。
+
+分别提供 ARM 32 位、64 位 APK，最低 Android 5.0。首次试用前请核对设备系统版本及 CPU / 系统架构。安卓 4.4 尚未支持。
+
+详细操作、验证及本次范围见 [TV_PREVIEW.md](TV_PREVIEW.md)。
 
 ## 修改
 
@@ -33,7 +41,10 @@
 ```sh
 flutter pub get
 flutter test
-flutter build apk --release --target-platform android-arm64
+# 手机 / 车机，32 位与 64 位分包
+flutter build apk --release --flavor mobile --split-per-abi --target-platform android-arm,android-arm64
+# TV：必须同时指定 flavor 与 Dart define
+flutter build apk --release --flavor tv --dart-define=BUJUAN_TV=true --split-per-abi --target-platform android-arm,android-arm64
 ```
 
 本仓库保留其他平台源码，但本次交付与验证针对 Android。

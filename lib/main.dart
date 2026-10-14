@@ -1,3 +1,4 @@
+import 'common/display_mode.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:on_audio_edit/on_audio_edit.dart';
 import 'pages/local/local_controller.dart';
@@ -7,7 +8,6 @@ import 'package:audio_session/audio_session.dart';
 import 'package:auto_route/auto_route.dart';
 
 import 'package:bujuan/common/bujuan_audio_handler.dart';
-import 'package:bujuan/common/constants/other.dart';
 import 'package:bujuan/common/constants/platform_utils.dart';
 import 'package:bujuan/common/netease_api/netease_music_api.dart';
 import 'package:bujuan/pages/album/controller.dart';
@@ -32,7 +32,6 @@ import 'common/constants/colors.dart';
 
 main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  bool land = PlatformUtils.isMacOS || PlatformUtils.isWindows || OtherUtils.isPad();
   final getIt = GetIt.instance;
   await _initAudioServer(getIt);
   final rootRouter = getIt<RootRouter>();
@@ -49,9 +48,10 @@ main() async {
     ));
   }
   //如果满足横屏条件，强制屏幕为横屏
-  if (land) {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-  }
+  await SystemChrome.setPreferredOrientations(DisplayMode.isTv
+      ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+      : [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
+         DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
   //外部
   // final rootNavigatorKey = GlobalKey<NavigatorState>();
   // final shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -79,7 +79,7 @@ main() async {
   //             routerConfig: router,
   //           );
   //         }))));
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge).then((value) => runApp(ScreenUtilInit(
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge).then((value) => runApp(AdaptiveBujuanApp(builder: (land) => ScreenUtilInit(
         designSize: !land ? const Size(750, 1334) : const Size(2339, 1080),
         minTextAdapt: true,
         splitScreenMode: true,
@@ -99,7 +99,7 @@ main() async {
             builder: (_, router) => MediaQuery(data: MediaQuery.of(_).copyWith(textScaleFactor: 1.0), child: router!),
           );
         },
-      )));
+      ))));
 }
 
 class MyObserver extends AutoRouterObserver {

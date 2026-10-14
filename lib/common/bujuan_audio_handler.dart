@@ -15,6 +15,7 @@ import 'package:hive_flutter/adapters.dart';
 import 'package:just_audio/just_audio.dart';
 
 import 'audio_player_handler.dart';
+import 'display_mode.dart';
 import 'constants/key.dart';
 import 'constants/platform_utils.dart';
 import 'netease_api/src/netease_api.dart';
@@ -69,6 +70,7 @@ class BujuanAudioHandler extends BaseAudioHandler
   final Future<String?> Function(MediaItem)? _urlResolver;
   final Duration loadTimeout;
   final Duration stallTimeout;
+  final bool _television;
   final _subscriptions = <StreamSubscription>[];
   AudioServiceRepeatMode _audioServiceRepeatMode = AudioServiceRepeatMode.all;
   final _playList = <MediaItem>[];
@@ -93,10 +95,12 @@ class BujuanAudioHandler extends BaseAudioHandler
     this.loadTimeout = const Duration(seconds: 15),
     this.stallTimeout = const Duration(seconds: 25),
     bool restoreQueue = true,
+    bool? television,
     Duration watchdogInterval = const Duration(seconds: 5),
   })  : _player = player ?? GetIt.instance<AudioPlayer>(),
         _box = box ?? GetIt.instance<Box>(),
-        _urlResolver = urlResolver {
+        _urlResolver = urlResolver,
+        _television = television ?? DisplayMode.isTv {
     _subscriptions.add(_player.playbackEventStream.listen(
       (_) => _broadcastState(),
       onError: (Object error, StackTrace stack) {
@@ -178,35 +182,41 @@ class BujuanAudioHandler extends BaseAudioHandler
     final playing = _loading ? _wantsPlay : _player.playing;
     playbackState.add(playbackState.value.copyWith(
       controls: [
-        PlatformUtils.isAndroid
-            ? ((mediaItem.value?.extras?['liked'] ?? false)
-                ? const MediaControl(
-                    label: 'fastForward',
-                    action: MediaAction.fastForward,
-                    androidIcon: 'drawable/audio_service_like')
-                : const MediaControl(
-                    label: 'rewind',
-                    action: MediaAction.rewind,
-                    androidIcon: 'drawable/audio_service_unlike'))
-            : const MediaControl(
-                label: 'setRating',
-                action: MediaAction.setRating,
-                androidIcon: 'drawable/audio_service_like'),
+        if (!_television)
+          PlatformUtils.isAndroid
+              ? ((mediaItem.value?.extras?['liked'] ?? false)
+                  ? const MediaControl(
+                      label: 'fastForward',
+                      action: MediaAction.fastForward,
+                      androidIcon: 'drawable/audio_service_like')
+                  : const MediaControl(
+                      label: 'rewind',
+                      action: MediaAction.rewind,
+                      androidIcon: 'drawable/audio_service_unlike'))
+              : const MediaControl(
+                  label: 'setRating',
+                  action: MediaAction.setRating,
+                  androidIcon: 'drawable/audio_service_like'),
         MediaControl.skipToPrevious,
         if (playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
+        if (_television) MediaControl.rewind,
+        if (_television) MediaControl.fastForward,
         MediaControl.stop,
       ],
-      systemActions: const {
+      systemActions: {
         MediaAction.play,
         MediaAction.pause,
         MediaAction.playPause,
         MediaAction.seek,
         MediaAction.skipToPrevious,
         MediaAction.skipToNext,
-        MediaAction.skipToQueueItem
+        MediaAction.skipToQueueItem,
+        if (_television) MediaAction.rewind,
+        if (_television) MediaAction.fastForward,
       },
-      androidCompactActionIndices: const [1, 2, 3],
+      androidCompactActionIndices:
+          _television ? const [0, 1, 2] : const [1, 2, 3],
       processingState: state ??
           (_loading
               ? AudioProcessingState.loading
@@ -556,10 +566,31 @@ class BujuanAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> fastForward() async => Home.to.likeSong(liked: true);
+  Future<void> fastForward() async {
+    if (_television) {
+      await _seekRelative(const Duration(seconds: 10));
+    } else {
+      await Home.to.likeSong(liked: true);
+    }
+  }
 
   @override
-  Future<void> rewind() async => Home.to.likeSong(liked: false);
+  Future<void> rewind() async {
+    if (_television) {
+      await _seekRelative(const Duration(seconds: -10));
+    } else {
+      await Home.to.likeSong(liked: false);
+    }
+  }
+
+  Future<void> _seekRelative(Duration delta) async {
+    final total = mediaItem.value?.duration ?? Duration.zero;
+    if (total <= Duration.zero) return;
+    final target = (_player.position + delta)
+        .inMilliseconds
+        .clamp(0, total.inMilliseconds);
+    await seek(Duration(milliseconds: target));
+  }
 
   @override
   Future customAction(String name, [Map<String, dynamic>? extras]) async {

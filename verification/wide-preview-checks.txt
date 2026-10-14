@@ -1,0 +1,7 @@
+BuJuan wide / TV preview: 2.0.5+2040
+Original author: 2697a / sixbugs. MIT license preserved.
+37 tests passed: 19 playback + 1 original drawer + 17 wide / remote tests.
+One optional visual rendering check passed for TV, car and compact car sizes.
+Static analysis of new wide UI: no errors or warnings. Async back handling uses WillPopScope for the existing AutoRoute 5 router (deprecated API information only).
+No connected Android device during this build. Xiaomi TV, Chromecast and BYD hardware testing remains pending.
+Preview screenshots use demo content rendered with the actual application widgets.
