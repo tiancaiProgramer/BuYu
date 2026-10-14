@@ -52,3 +52,10 @@ android {
     }
 }
 flutter { source '../..' }
+
+// Direct-download ABI packages share the base version so later upgrades remain possible.
+android.applicationVariants.all { variant ->
+    variant.outputs.each { output ->
+        output.versionCodeOverride = variant.versionCode
+    }
+}
