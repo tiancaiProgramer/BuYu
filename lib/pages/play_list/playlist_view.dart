@@ -1,3 +1,6 @@
+import '../../widget/landscape_cards.dart';
+import '../../widget/download_song_button.dart';
+import '../../widget/adaptive_option_sheet.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:auto_route/auto_route.dart';
@@ -68,23 +71,24 @@ class PlayListView extends GetView<PlayListController> {
                   ],
                 ),
                 _buildTopItem(context),
-                Obx(() => SliverFixedExtentList(
-                      delegate: SliverChildBuilderDelegate(
-                          (context, index) => SongItem(
-                                index: index,
-                                mediaItem: controller.isSearch.value ? controller.searchItems[index] : controller.mediaItems[index],
-                                onTap: () {
-                                  if (controller.isSearch.value) {
-                                    index = controller.mediaItems.indexOf(controller.searchItems[index]);
-                                  }
-                                  Home.to.playByIndex(index, 'queueTitle', mediaItem: controller.mediaItems);
-                                },
-                              ),
-                          childCount: controller.isSearch.value ? controller.searchItems.length : controller.mediaItems.length,
-                          addAutomaticKeepAlives: false,
-                          addRepaintBoundaries: false),
-                      itemExtent: 130.w,
-                    ))
+                Obx(() {
+                  final songs = controller.isSearch.value ? controller.searchItems : controller.mediaItems;
+                  Widget item(BuildContext context, int index) => SongItem(
+                      index: index, mediaItem: songs[index],
+                      showArtwork: phoneLandscape(context),
+                      onTap: () => Home.to.playByIndex(index, 'queueTitle', mediaItem: List.of(songs)));
+                  if (phoneLandscape(context)) {
+                    return SliverPadding(padding: const EdgeInsets.all(12), sliver: SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3, mainAxisExtent: 112 * 2 / 3,
+                            mainAxisSpacing: 8, crossAxisSpacing: 10),
+                        delegate: SliverChildBuilderDelegate((context, index) =>
+                            LandscapeCardSurface(child: item(context, index)), childCount: songs.length)));
+                  }
+                  return SliverFixedExtentList(itemExtent: 130.w,
+                      delegate: SliverChildBuilderDelegate(item, childCount: songs.length,
+                          addAutomaticKeepAlives: false, addRepaintBoundaries: false));
+                })
               ],
             ),
           ),
@@ -127,7 +131,7 @@ class PlayListView extends GetView<PlayListController> {
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Text(
                 ((context.routeData.args as Play).description ?? '暂无描述').replaceAll('\n', ''),
-                maxLines: 5,
+                maxLines: phoneLandscape(context) ? 2 : 5,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 24.sp, height: 1.6, color: Theme.of(context).cardColor.withOpacity(.6)),
               ),
@@ -143,8 +147,9 @@ class SongItem extends StatelessWidget {
   final int index;
   final MediaItem mediaItem;
   final VoidCallback? onTap;
+  final bool showArtwork;
 
-  const SongItem({Key? key, required this.index, required this.mediaItem, this.onTap}) : super(key: key);
+  const SongItem({Key? key, required this.index, required this.mediaItem, this.onTap, this.showArtwork = false}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -154,10 +159,17 @@ class SongItem extends StatelessWidget {
     } else {
       sheet.add(const SheetAction<ActionType>(label: '查看歌曲评论', icon: TablerIcons.message_2, key: ActionType.talk));
     }
+    if (mediaItem.extras?['type'] != type.MediaType.local.name) {
+      sheet.add(const SheetAction<ActionType>(label: '下载歌曲', icon: TablerIcons.download, key: ActionType.download));
+    }
     return ListTile(
       visualDensity: VisualDensity.compact,
-      leading: Text('${index + 1}'),
-      horizontalTitleGap: 0.w,
+      leading: showArtwork
+          ? SimpleExtendedImage('${mediaItem.extras?['image'] ?? ''}?param=120y120',
+              width: 85.w, height: 85.w, cacheWidth: 256,
+              borderRadius: BorderRadius.circular(8))
+          : Text('${index + 1}'),
+      horizontalTitleGap: showArtwork ? 10 : 0.w,
       title: Text(
         mediaItem.title,
         maxLines: 1,
@@ -168,7 +180,7 @@ class SongItem extends StatelessWidget {
       ),
       trailing: IconButton(
           onPressed: () {
-            showModalActionSheet(
+            showSongActions(
               context: context,
               title: mediaItem.title,
               message: mediaItem.artist,
@@ -176,6 +188,9 @@ class SongItem extends StatelessWidget {
             ).then((value) {
               if (value != null) {
                 switch (value) {
+                  case ActionType.download:
+                    downloadSong(context, mediaItem);
+                    break;
                   case ActionType.next:
                     if (Home.to.audioServeHandler.playbackState.value.queueIndex != null) {
                       Home.to.audioServeHandler.insertQueueItem(Home.to.audioServeHandler.playbackState.value.queueIndex! + 1, mediaItem);
@@ -230,6 +245,9 @@ class SongItemShowImage extends StatelessWidget {
     } else {
       sheet.add(const SheetAction<ActionType>(label: '查看歌曲评论', icon: TablerIcons.message_2, key: ActionType.talk));
     }
+    if (mediaItem.extras?['type'] != type.MediaType.local.name) {
+      sheet.add(const SheetAction<ActionType>(label: '下载歌曲', icon: TablerIcons.download, key: ActionType.download));
+    }
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 10.w),
       leading: SimpleExtendedImage.avatar(
@@ -239,6 +257,8 @@ class SongItemShowImage extends StatelessWidget {
         fit: BoxFit.cover,
       ),
       title: RichText(
+          maxLines: phoneLandscape(context) ? 2 : null,
+          overflow: phoneLandscape(context) ? TextOverflow.ellipsis : TextOverflow.clip,
           text: TextSpan(text: mediaItem.title, style: TextStyle(fontSize: 30.sp, color: Theme.of(context).cardColor), children: [
         TextSpan(text: mediaItem.extras?['fee'] == 1 ? '   vip' : '', style: TextStyle(color: Theme.of(context).primaryColor.withOpacity(.9), fontSize: 26.sp)),
       ])),
@@ -248,7 +268,7 @@ class SongItemShowImage extends StatelessWidget {
       ),
       trailing: IconButton(
           onPressed: () {
-            showModalActionSheet(
+            showSongActions(
               context: context,
               title: mediaItem.title,
               message: mediaItem.artist,
@@ -256,6 +276,9 @@ class SongItemShowImage extends StatelessWidget {
             ).then((value) {
               if (value != null) {
                 switch (value) {
+                  case ActionType.download:
+                    downloadSong(context, mediaItem);
+                    break;
                   case ActionType.next:
                     if (Home.to.audioServeHandler.playbackState.value.queueIndex != null) {
                       Home.to.audioServeHandler.insertQueueItem(Home.to.audioServeHandler.playbackState.value.queueIndex! + 1, mediaItem);
@@ -381,4 +404,13 @@ class ArtistsItem extends StatelessWidget {
   }
 }
 
-enum ActionType { next, edit, talk }
+enum ActionType { next, edit, talk, download }
+
+Future<ActionType?> showSongActions({required BuildContext context, required String title,
+    String? message, required List<SheetAction<ActionType>> actions}) =>
+    showModalBottomSheet<ActionType>(context: context, isScrollControlled: true,
+        builder: (sheet) => AdaptiveOptionSheet(title: title, children: [
+          for (final action in actions) ListTile(title: Text(action.label),
+              leading: action.icon == null ? null : Icon(action.icon),
+              onTap: () => Navigator.pop(sheet, action.key)),
+        ], footer: Text(message ?? '')));

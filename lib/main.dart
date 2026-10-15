@@ -1,3 +1,5 @@
+import 'common/constants/key.dart';
+import 'common/appearance_store.dart';
 import 'common/display_mode.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:on_audio_edit/on_audio_edit.dart';
@@ -47,11 +49,8 @@ main() async {
       systemNavigationBarColor: Colors.transparent,
     ));
   }
-  //如果满足横屏条件，强制屏幕为横屏
-  await SystemChrome.setPreferredOrientations(DisplayMode.isTv
-      ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
-      : [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
-         DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  await DisplayMode.applyOrientation(
+      getIt<Box>().get(landscapeAdaptationSp, defaultValue: true));
   //外部
   // final rootNavigatorKey = GlobalKey<NavigatorState>();
   // final shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -80,7 +79,7 @@ main() async {
   //           );
   //         }))));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge).then((value) => runApp(AdaptiveBujuanApp(builder: (land) => ScreenUtilInit(
-        designSize: !land ? const Size(750, 1334) : const Size(2339, 1080),
+        designSize: DisplayMode.designSize(DisplayMode.windowSize),
         minTextAdapt: true,
         splitScreenMode: true,
         builder: (BuildContext context, Widget? child) {
@@ -96,7 +95,7 @@ main() async {
             routerDelegate: rootRouter.delegate(navigatorObservers: () => [MyObserver()]),
             routeInformationParser: rootRouter.defaultRouteParser(),
             debugShowCheckedModeBanner: false,
-            builder: (_, router) => MediaQuery(data: MediaQuery.of(_).copyWith(textScaleFactor: 1.0), child: router!),
+            builder: (_, router) => MediaQuery(data: DisplayMode.safeMedia(MediaQuery.of(_), View.of(_).devicePixelRatio), child: router!),
           );
         },
       ))));
@@ -173,6 +172,7 @@ Future<void> _initAudioServer(getIt) async {
   getIt.registerSingleton<ZoomDrawerController>(ZoomDrawerController());
   await Hive.initFlutter('BuJuan');
   getIt.registerSingleton<Box>(await Hive.openBox('cache'));
+  await AppearanceStore(getIt<Box>()).migrate();
   await NeteaseMusicApi.init(debug: false);
   getIt.registerSingleton<BujuanAudioHandler>(await AudioService.init<BujuanAudioHandler>(
     builder: () => BujuanAudioHandler(),

@@ -15,6 +15,8 @@ import 'package:hive_flutter/adapters.dart';
 import 'package:just_audio/just_audio.dart';
 
 import 'audio_player_handler.dart';
+import 'audio_quality.dart';
+import 'audio_stream_info.dart';
 import 'display_mode.dart';
 import 'constants/key.dart';
 import 'constants/platform_utils.dart';
@@ -62,6 +64,12 @@ class RootIsolateData {
   RootIsolateData(this.rootIsolateToken, {this.playlist, this.items});
 }
 
+class _ResolvedAudio {
+  const _ResolvedAudio(this.url, this.report);
+  final String url;
+  final AudioQualityReport report;
+}
+
 class BujuanAudioHandler extends BaseAudioHandler
     with SeekHandler, QueueHandler
     implements AudioPlayerHandler {
@@ -87,6 +95,8 @@ class BujuanAudioHandler extends BaseAudioHandler
   Future<void> _playerOperation = Future.value();
   Timer? _sleepTimer;
   Timer? _watchdog;
+  final qualityReport = ValueNotifier<AudioQualityReport?>(null);
+  AudioStreamProbe? _streamProbe;
 
   BujuanAudioHandler({
     AudioPlayer? player,
@@ -365,25 +375,67 @@ class BujuanAudioHandler extends BaseAudioHandler
       await _load(_curIndex, playIt: playIt, next: isNext);
   }
 
-  Future<String?> _resolveUrl(MediaItem song) async {
-    if (_urlResolver != null) return _urlResolver!(song);
+  Future<_ResolvedAudio?> _resolveUrl(MediaItem song) async {
+    final preferred = AudioQuality.parse(_box.get(audioQualitySp));
+    if (_urlResolver != null) {
+      final url = await _urlResolver!(song);
+      return url == null || url.isEmpty ? null : _ResolvedAudio(url,
+          AudioQualityReport(songId: song.id, title: song.title, requested: preferred));
+    }
     if (song.extras?['type'] == MediaType.local.name ||
         song.extras?['type'] == MediaType.neteaseCache.name) {
-      return song.extras?['url'] as String?;
+      final url = song.extras?['url'] as String?;
+      return url == null || url.isEmpty ? null : _ResolvedAudio(url,
+          AudioQualityReport(songId: song.id, title: song.title, requested: preferred, local: true));
     }
-    if (_box.get(unblockVipSp, defaultValue: false) &&
-        (song.extras?['fee'] == 1 || song.extras?['fee'] == 4)) {
-      return getUnblockUrl(song);
+    for (final quality in preferred.fallbacks) {
+      try {
+        final response = await NeteaseMusicApi()
+            .songDownloadUrl([song.id], level: quality.name);
+        // Match by id and retain signed query parameters in the CDN URL.
+        final item = response.data?.firstWhereOrNull((e) => e.id == song.id);
+        final url = item?.url;
+        if (url != null && url.isNotEmpty) return _ResolvedAudio(url,
+            AudioQualityReport(songId: song.id, title: song.title,
+                requested: preferred, returnedLevel: item!.level,
+                bitrate: item.br, size: item.size,
+                serverFormat: item.type ?? item.encodeType,
+                trial: item.freeTrialInfo != null));
+      } catch (_) {
+        if (quality == AudioQuality.standard) rethrow;
+      }
     }
-    final response =
-        await NeteaseMusicApi().songDownloadUrl([song.id], level: 'exhigh');
-    // Match by id and retain signed query parameters in the CDN URL.
-    final url = response.data?.firstWhereOrNull((e) => e.id == song.id)?.url;
-    if ((url == null || url.isEmpty) &&
-        _box.get(unblockSp, defaultValue: false)) {
-      return getUnblockUrl(song);
+    return null;
+  }
+
+  Future<void> _verifyAudio(_ResolvedAudio resolved, int request) async {
+    final probe = AudioStreamProbe();
+    _streamProbe = probe;
+    try {
+      final info = await probe.inspect(resolved.url);
+      if (_isCurrent(request)) {
+        qualityReport.value = resolved.report.verified(info);
+        debugPrint('BuJuan audio verification: ${qualityReport.value!.description}');
+      }
+    } catch (_) {
+      if (_isCurrent(request)) qualityReport.value = resolved.report.verified(null,
+          error: '实际文件核验未完成，不能确认音频规格');
+    } finally {
+      probe.close();
+      if (identical(_streamProbe, probe)) _streamProbe = null;
     }
-    return url;
+  }
+
+  Future<void> setAudioQuality(AudioQuality quality) async {
+    if (AudioQuality.parse(_box.get(audioQualitySp)) == quality) return;
+    await _box.put(audioQualitySp, quality.name);
+    if (_disposed || queue.value.isEmpty) return;
+    final song = queue.value[_curIndex];
+    if (song.extras?['type'] == MediaType.local.name ||
+        song.extras?['type'] == MediaType.neteaseCache.name) return;
+    final position = _loading ? Duration.zero : _player.position;
+    _recoveries = 0;
+    await _load(_curIndex, playIt: _wantsPlay, position: position);
   }
 
   Future<void> _load(int index,
@@ -391,6 +443,8 @@ class BujuanAudioHandler extends BaseAudioHandler
       bool next = true,
       Duration position = Duration.zero}) async {
     final request = ++_request;
+    _streamProbe?.close();
+    qualityReport.value = null;
     _curIndex = index;
     _wantsPlay = playIt;
     _loading = true;
@@ -411,14 +465,16 @@ class BujuanAudioHandler extends BaseAudioHandler
             _broadcastState();
           });
           if (!_isCurrent(request)) return;
-          final url = await _resolveUrl(song).timeout(loadTimeout);
+          final resolved = await _resolveUrl(song).timeout(loadTimeout);
           if (!_isCurrent(request)) return;
-          if (url == null || url.isEmpty) break;
+          if (resolved == null) break;
+          final url = resolved.url;
           await _withPlayer(() async {
             if (!_isCurrent(request)) return;
             final AudioSource source;
             if (song.extras?['type'] == MediaType.local.name) {
-              source = AudioSource.file(url, tag: song);
+              final uri = Uri.parse(url);
+              source = uri.scheme == 'content' ? AudioSource.uri(uri, tag: song) : AudioSource.file(uri.scheme == 'file' ? uri.toFilePath() : url, tag: song);
             } else if (song.extras?['type'] == MediaType.neteaseCache.name) {
               source =
                   StreamSource(url, url.replaceAll('.uc!', '').split('.').last);
@@ -445,6 +501,8 @@ class BujuanAudioHandler extends BaseAudioHandler
             mediaItem.add(loadedSong);
             _loaded = true;
             _loading = false;
+            qualityReport.value = resolved.report;
+            unawaited(_verifyAudio(resolved, request));
             _lastPosition = _player.position;
             _lastProgress = DateTime.now();
             await _box.put(playByIndex, _curIndex);
@@ -513,8 +571,6 @@ class BujuanAudioHandler extends BaseAudioHandler
     await playIndex(index);
   }
 
-  Future<String> getUnblockUrl(MediaItem song) async => '';
-
   @override
   Future<void> pause() async {
     _wantsPlay = false;
@@ -557,6 +613,9 @@ class BujuanAudioHandler extends BaseAudioHandler
   @override
   Future<void> stop() async {
     ++_request;
+    _streamProbe?.close();
+    _streamProbe = null;
+    qualityReport.value = null;
     _wantsPlay = false;
     _loading = false;
     _loaded = false;
@@ -643,6 +702,7 @@ class BujuanAudioHandler extends BaseAudioHandler
       await subscription.cancel();
     }
     await _player.dispose();
+    qualityReport.dispose();
   }
 
   @override

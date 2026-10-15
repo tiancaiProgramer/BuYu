@@ -49,7 +49,8 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   double panelAlbumPadding = 15.w; //专辑图片左右上下的边距
 
   //是否是横屏
-  bool get landscape => DisplayMode.isWide;
+  // Phone routes retain the original widgets when the display rotates.
+  bool get landscape => DisplayMode.isTv;
 
   final List<LeftMenu> leftMenus = [
     LeftMenu('个人中心', TablerIcons.user, Routes.user, '/home/user'),
@@ -103,6 +104,10 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   //是否播放中
   RxBool playing = false.obs;
 
+  // Restored queues do not occupy landscape space until playback starts.
+  RxBool hasStartedPlayback = false.obs;
+  RxBool landscapeAdaptation = true.obs;
+
   RxBool fm = false.obs;
 
   //是否渐变播放背景
@@ -122,6 +127,17 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   //是否开启高音质
   RxString background = ''.obs;
+  final backgroundLandscape = ''.obs;
+  final backgroundBlur = 0.0.obs;
+  final backgroundLandscapeBlur = 0.0.obs;
+
+  void refreshBackground() {
+    background.value = box.get(backgroundSp, defaultValue: '');
+    backgroundLandscape.value = box.get(backgroundLandscapeSp, defaultValue: '');
+    backgroundBlur.value = (box.get(backgroundBlurSp, defaultValue: 0) as num).toDouble();
+    backgroundLandscapeBlur.value =
+        (box.get(backgroundLandscapeBlurSp, defaultValue: 0) as num).toDouble();
+  }
 
   //上下文
   late BuildContext buildContext;
@@ -229,17 +245,24 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
       mEffects.add({"percent": i, "size": 3 + rng.nextInt(30 - 2).toDouble()});
     }
     box.get(noFirstOpen, defaultValue: false);
-    background.value = box.get(backgroundSp, defaultValue: '');
+    refreshBackground();
     cache.value = box.get(cacheSp, defaultValue: false);
     gradientBackground.value = box.get(gradientBackgroundSp, defaultValue: true);
     topLyric.value = box.get(topLyricSp, defaultValue: false);
     fm.value = box.get(fmSp, defaultValue: false);
     high.value = box.get(highSong, defaultValue: false);
     roundAlbum.value = box.get(roundAlbumSp, defaultValue: false);
+    landscapeAdaptation.value = box.get(landscapeAdaptationSp, defaultValue: true);
     String repeatMode = box.get(repeatModeSp, defaultValue: 'all');
     audioServiceRepeatMode.value = AudioServiceRepeatMode.values.firstWhereOrNull((element) => element.name == repeatMode) ?? AudioServiceRepeatMode.all;
     // audioServeHandler.setRepeatMode(audioServiceRepeatMode.value);
     super.onInit();
+  }
+
+  Future<void> setLandscapeAdaptation(bool enabled) async {
+    landscapeAdaptation.value = enabled;
+    await box.put(landscapeAdaptationSp, enabled);
+    await DisplayMode.applyOrientation(enabled);
   }
 
   @override
@@ -274,6 +297,7 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
       ..addAll(value));
     audioServeHandler.mediaItem.listen((value) async {
       if (value == null) {
+        hasStartedPlayback.value = false;
         lyricsLineModels.clear();
         duration.value = Duration.zero;
         currLyric.value = '';
@@ -286,10 +310,10 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
       lyricsLineModels.clear();
       duration.value = Duration.zero;
       currLyric.value = '';
-      _getAlbumColor();
+      if (!DisplayMode.isTv) _getAlbumColor();
       _getLyric();
       _setPlayListOffset();
-      if (value.extras?['type'] == MediaType.playlist.name) {
+      if (!DisplayMode.isTv && value.extras?['type'] == MediaType.playlist.name) {
         _getSongTalk();
       }
     });
@@ -319,6 +343,7 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     });
     audioServeHandler.playbackState.listen((value) {
       playing.value = value.playing;
+      if (value.playing) hasStartedPlayback.value = true;
     });
   }
 
@@ -381,6 +406,12 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   }
 
   changeStatusIconColor(bool changedToAlbum) {
+    if (DisplayMode.isWide && !DisplayMode.isTv) {
+      SystemChrome.setSystemUIOverlayStyle(DisplayMode.overlayForBackground(
+          changedToAlbum ? playbackColors(buildContext).first : Theme.of(buildContext).scaffoldBackgroundColor));
+      _getColor();
+      return;
+    }
     var color = rx.value.darkMutedColor?.color ?? rx.value.darkVibrantColor?.color ?? rx.value.dominantColor?.color ?? Colors.white;
     Brightness brightness = ThemeData.estimateBrightnessForColor(color);
     bool isLight = brightness == Brightness.light;
@@ -403,6 +434,16 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     Brightness brightness = ThemeData.estimateBrightnessForColor(color);
     // bodyColor.value = rx.value.darkVibrantColor?.bodyTextColor??rx.value.darkMutedColor?.bodyTextColor??rx.value.lightVibrantColor?.bodyTextColor??Colors.white;
     bodyColor.value = brightness == Brightness.light ? Colors.black.withOpacity(.6) : Colors.white.withOpacity(.7);
+  }
+
+  List<Color> playbackColors(BuildContext context) {
+    final palette = rx.value;
+    final base = Theme.of(context).scaffoldBackgroundColor;
+    final dark = palette.darkVibrantColor?.color ?? palette.darkMutedColor?.color ?? palette.dominantColor?.color ?? base;
+    final top = gradientBackground.value
+        ? palette.lightVibrantColor?.color ?? palette.lightMutedColor?.color ?? dark
+        : dark;
+    return [Color.alphaBlend(top.withOpacity(.85), base), Color.alphaBlend(dark.withOpacity(.85), base)];
   }
 
   //获取相似歌单
@@ -437,6 +478,9 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   //改变循环模式
   changeRepeatMode() {
+    // An explicit repeat choice applies to the current queue, including FM.
+    fm.value = false;
+    box.put(fmSp, false);
     switch (audioServiceRepeatMode.value) {
       case AudioServiceRepeatMode.one:
         audioServiceRepeatMode.value = AudioServiceRepeatMode.none;
@@ -548,15 +592,15 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   //当按下返回键
   Future<bool> onWillPop() async {
     if (!landscape) {
-      if (panelController.isPanelOpen) {
+      if (!DisplayMode.isWide && panelController.isAttached && panelController.isPanelOpen) {
         panelController.close();
         return false;
       }
-      if (panelControllerHome.isPanelOpen) {
+      if (panelControllerHome.isAttached && panelControllerHome.isPanelOpen) {
         panelControllerHome.close();
         return false;
       }
-      if (myDrawerController.isOpen!()) {
+      if (myDrawerController.isOpen?.call() ?? false) {
         myDrawerController.close!();
         return false;
       }
@@ -572,8 +616,10 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   //播放歌曲根据下标
   playByIndex(int index, String queueTitle, {List<MediaItem>? mediaItem}) async {
+    fm.value = false;
+    await box.put(fmSp, false);
     audioServeHandler.queueTitle.value = queueTitle;
-    audioServeHandler.changeQueueLists(mediaItem ?? [], index: index);
+    await audioServeHandler.changeQueueLists(mediaItem ?? [], index: index);
   }
 
   getFmSongList() async {

@@ -253,6 +253,10 @@ SongUrl _$SongUrlFromJson(Map<String, dynamic> json) {
   return SongUrl()
     ..id = dynamicToString(json['id'])
     ..url = json['url'] as String?
+    ..level = json['level'] as String?
+    ..type = json['type'] as String?
+    ..encodeType = json['encodeType'] as String?
+    ..freeTrialInfo = json['freeTrialInfo'] as Map<String, dynamic>?
     ..br = json['br'] as int?
     ..size = json['size'] as int?
     ..code = json['code'] as int?
@@ -268,6 +272,10 @@ SongUrl _$SongUrlFromJson(Map<String, dynamic> json) {
 Map<String, dynamic> _$SongUrlToJson(SongUrl instance) => <String, dynamic>{
       'id': instance.id,
       'url': instance.url,
+      'level': instance.level,
+      'type': instance.type,
+      'encodeType': instance.encodeType,
+      'freeTrialInfo': instance.freeTrialInfo,
       'br': instance.br,
       'size': instance.size,
       'code': instance.code,

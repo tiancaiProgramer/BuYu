@@ -53,6 +53,12 @@ class SimpleExtendedImageState extends State<SimpleExtendedImage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.url.split('?').first.isEmpty) {
+      final image = widget.replacement ?? Image.asset(widget.placeholder,
+          width: widget.width, height: widget.height, fit: widget.fit ?? BoxFit.cover);
+      return widget.shape == BoxShape.circle ? ClipOval(child: image)
+          : ClipRRect(borderRadius: widget.borderRadius ?? BorderRadius.zero, child: image);
+    }
     // return ExtendedImage.network(
     //   widget.url,
     //   width: widget.width,

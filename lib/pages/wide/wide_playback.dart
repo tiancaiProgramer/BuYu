@@ -76,12 +76,14 @@ class WidePlayback extends ValueNotifier<WidePlaybackData> {
         await home.likeSong();
       },
     );
+    List<MediaItem> queue = List.of(home.mediaItems);
+    List<LyricsLineModel> lyrics = List.of(home.lyricsLineModels);
     void update() {
       final state = handler.playbackState.value;
       model.value = WidePlaybackData(
           song: home.mediaItem.value,
-          queue: List.of(home.mediaItems),
-          lyrics: List.of(home.lyricsLineModels),
+          queue: queue,
+          lyrics: lyrics,
           position: home.duration.value,
           playing: state.playing,
           loading: state.processingState == AudioProcessingState.loading ||
@@ -92,12 +94,17 @@ class WidePlayback extends ValueNotifier<WidePlaybackData> {
 
     model._subscriptions.addAll([
       home.mediaItem.listen((_) => update()),
-      home.mediaItems.listen((_) => update()),
+      home.mediaItems.listen((_) {
+        queue = List.of(home.mediaItems);
+        update();
+      }),
       home.duration.listen((_) => update()),
       home.playing.listen((_) => update()),
       home.audioServiceRepeatMode.listen((_) => update()),
-      (home.lyricsLineModels as RxList<LyricsLineModel>)
-          .listen((_) => update()),
+      (home.lyricsLineModels as RxList<LyricsLineModel>).listen((_) {
+        lyrics = List.of(home.lyricsLineModels);
+        update();
+      }),
       handler.playbackState.listen((_) => update()),
     ]);
     update();

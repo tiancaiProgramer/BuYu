@@ -88,7 +88,9 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return MyGetView(child: Scaffold(
-      backgroundColor: Colors.transparent,
+      // This route is opaque. Paint its background during the transition too,
+      // so the previous page cannot show through the search field or body.
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: false,
       appBar: MyAppBar(
         backgroundColor: Colors.transparent,

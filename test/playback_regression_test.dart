@@ -3,9 +3,15 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:bujuan/common/bujuan_audio_handler.dart';
+import 'package:bujuan/common/constants/key.dart';
+import 'package:bujuan/common/audio_quality.dart';
+import 'package:bujuan/common/netease_api/src/dio_ext.dart';
+import 'package:bujuan/common/netease_api/src/netease_api.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:just_audio/just_audio.dart';
+import 'audio_stream_info_test.dart' show flacHeader;
 
 class FakePlayer implements AudioPlayer {
   final events = StreamController<PlaybackEvent>.broadcast(sync: true);
@@ -103,6 +109,22 @@ const songs = [
 ];
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 15));
 
+class TestApiPaths extends PathProvider {
+  TestApiPaths(this.path);
+  final String path;
+  @override
+  Future<void> init() async {}
+  @override
+  String getDataSavedPath() => '$path/api-data/';
+  @override
+  String getCookieSavedPath() => '$path/api-cookies/';
+}
+
+class _RealHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => super.createHttpClient(context);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory dir;
@@ -141,6 +163,209 @@ void main() {
     expect(player.loadedUrls, [file.uri.toString()]);
     expect(handler.mediaItem.value?.id, song.id);
     expect(player.playing, isTrue);
+  });
+
+  test('obsolete Unblock preferences cannot bypass a valid official URL',
+      () async {
+    final originalInterceptors = Https.dio.interceptors.toList();
+    await NeteaseMusicApi.init(provider: TestApiPaths(dir.path));
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(player: player, box: box, restoreQueue: false);
+    await box.putAll({unblockSp: true, unblockVipSp: true});
+    var officialLookups = 0;
+    final offline = InterceptorsWrapper(onRequest: (options, response) {
+      officialLookups++;
+      response.resolve(Response(requestOptions: options, data: {
+        'code': 200,
+        'data': [
+          {'id': 'vip', 'url': 'https://example.test/official.mp3', 'code': 200}
+        ]
+      }));
+    });
+    Https.dio.interceptors.insert(0, offline);
+    try {
+      await handler.changeQueueLists([
+        const MediaItem(id: 'vip', title: '授权歌曲', extras: {'fee': 1})
+      ]);
+      expect(officialLookups, 1);
+      expect(player.loadedUrls, ['https://example.test/official.mp3']);
+      expect(player.playing, isTrue);
+    } finally {
+      Https.dio.interceptors
+        ..clear()
+        ..addAll(originalInterceptors);
+    }
+  });
+
+  test('every quality option reaches the actual song URL request', () async {
+    final original = Https.dio.interceptors.toList();
+    await NeteaseMusicApi.init(provider: TestApiPaths(dir.path));
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(player: player, box: box, restoreQueue: false);
+    final requested = <String>[];
+    Https.dio.interceptors.insert(0,
+        InterceptorsWrapper(onRequest: (options, response) {
+      final level = (options.data as Map)['level'] as String;
+      requested.add(level);
+      response.resolve(Response(requestOptions: options, data: {
+        'code': 200,
+        'data': [
+          {
+            'id': 'quality',
+            'url': 'https://example.test/$level.mp3?token=signed'
+          }
+        ]
+      }));
+    }));
+    try {
+      for (final quality in AudioQuality.values) {
+        await box.put(audioQualitySp, quality.name);
+        await handler
+            .changeQueueLists([const MediaItem(id: 'quality', title: '音质测试')]);
+        expect(player.loadedUrls.last,
+            'https://example.test/${quality.name}.mp3?token=signed');
+        expect(player.playing, isTrue);
+      }
+      expect(requested, AudioQuality.values.map((e) => e.name).toList());
+    } finally {
+      Https.dio.interceptors
+        ..clear()
+        ..addAll(original);
+    }
+  });
+
+  test('unavailable quality falls back without advancing the song', () async {
+    final original = Https.dio.interceptors.toList();
+    await NeteaseMusicApi.init(provider: TestApiPaths(dir.path));
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(player: player, box: box, restoreQueue: false);
+    await box.put(audioQualitySp, 'hires');
+    final requested = <String>[];
+    Https.dio.interceptors.insert(0,
+        InterceptorsWrapper(onRequest: (options, response) {
+      final level = (options.data as Map)['level'] as String;
+      requested.add(level);
+      response.resolve(Response(requestOptions: options, data: {
+        'code': 200,
+        'data': [
+          {
+            'id': 'quality',
+            'url': level == 'exhigh' ? 'https://example.test/exhigh.mp3' : null
+          }
+        ]
+      }));
+    }));
+    try {
+      await handler
+          .changeQueueLists([const MediaItem(id: 'quality', title: '音质回退')]);
+      expect(requested, ['hires', 'lossless', 'exhigh']);
+      expect(handler.mediaItem.value!.id, 'quality');
+      expect(player.loadedUrls, ['https://example.test/exhigh.mp3']);
+      expect(player.playing, isTrue);
+    } finally {
+      Https.dio.interceptors
+        ..clear()
+        ..addAll(original);
+    }
+  });
+
+  test(
+      'quality changes retain position and pause state; local files are not reloaded',
+      () async {
+    final original = Https.dio.interceptors.toList();
+    await NeteaseMusicApi.init(provider: TestApiPaths(dir.path));
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(player: player, box: box, restoreQueue: false);
+    Https.dio.interceptors.insert(0,
+        InterceptorsWrapper(onRequest: (options, response) {
+      final level = (options.data as Map)['level'] as String;
+      response.resolve(Response(requestOptions: options, data: {
+        'code': 200,
+        'data': [
+          {'id': 'quality', 'url': 'https://example.test/$level.mp3'}
+        ]
+      }));
+    }));
+    try {
+      await handler
+          .changeQueueLists([const MediaItem(id: 'quality', title: '同一首歌')]);
+      await handler.seek(const Duration(seconds: 51));
+      await handler.pause();
+      await handler.setAudioQuality(AudioQuality.lossless);
+      expect(box.get(audioQualitySp), 'lossless');
+      expect(player.loadedUrls.last, 'https://example.test/lossless.mp3');
+      expect(player.position, const Duration(seconds: 51));
+      expect(player.playing, isFalse);
+      await handler.play();
+      await handler.setAudioQuality(AudioQuality.hires);
+      expect(player.position, const Duration(seconds: 51));
+      expect(player.playing, isTrue);
+      final local = await File('${dir.path}/local.wav').writeAsBytes([1, 2, 3]);
+      await handler.changeQueueLists([
+        MediaItem(
+            id: 'local',
+            title: '本地',
+            extras: {'type': 'local', 'url': local.path})
+      ]);
+      final count = player.loadedUrls.length;
+      await handler.setAudioQuality(AudioQuality.standard);
+      expect(player.loadedUrls.length, count);
+      expect(player.playing, isTrue);
+    } finally {
+      Https.dio.interceptors
+        ..clear()
+        ..addAll(original);
+    }
+  });
+
+  test('quality report verifies the exact loaded file and exposes a server downgrade', () async {
+    final original = Https.dio.interceptors.toList();
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final requests = <String>[];
+    server.listen((request) async {
+      requests.add(request.uri.toString());
+      final bytes = flacHeader(rate: 44100, bits: 16);
+      request.response.statusCode = 206;
+      request.response.headers.set('content-range', 'bytes 0-${bytes.length - 1}/10000000');
+      request.response.add(bytes);
+      await request.response.close();
+    });
+    final url = 'http://127.0.0.1:${server.port}/actual.flac?token=retained';
+    await NeteaseMusicApi.init(provider: TestApiPaths(dir.path));
+    await handler.dispose();
+    player = FakePlayer();
+    handler = BujuanAudioHandler(player: player, box: box, restoreQueue: false);
+    await box.put(audioQualitySp, 'hires');
+    Https.dio.interceptors.insert(0, InterceptorsWrapper(onRequest: (options, response) {
+      response.resolve(Response(requestOptions: options, data: {'code': 200, 'data': [
+        {'id': 'quality', 'url': url, 'level': 'lossless', 'type': 'flac', 'br': 800000, 'size': 10000000}
+      ]}));
+    }));
+    final verified = Completer<void>();
+    handler.qualityReport.addListener(() {
+      if (handler.qualityReport.value?.checked == true && !verified.isCompleted) verified.complete();
+    });
+    try {
+      await HttpOverrides.runWithHttpOverrides(() async {
+        await handler.changeQueueLists([const MediaItem(id: 'quality', title: '实际文件')]);
+        await verified.future.timeout(const Duration(seconds: 5));
+      }, _RealHttpOverrides());
+      expect(player.loadedUrls.single, url);
+      expect(requests.single, '/actual.flac?token=retained');
+      final report = handler.qualityReport.value!;
+      expect(report.returnedLevel, 'lossless');
+      expect(report.requested, AudioQuality.hires);
+      expect((report.stream!.bits, report.stream!.sampleRate), (16, 44100));
+      expect(report.description, contains('接口标记与设置不同'));
+      expect(player.playing, isTrue);
+    } finally {
+      await server.close(force: true);
+      Https.dio.interceptors..clear()..addAll(original);
+    }
   });
 
   test('queue insertion preserves the playing song and survives shuffle',
@@ -422,11 +647,20 @@ void main() {
         urlResolver: (song) async => 'https://example.test/${song.id}');
     await handler.changeQueueLists(songs);
     await handler.seek(const Duration(seconds: 12));
-    await Future<void>.delayed(const Duration(milliseconds: 65));
+    await player.playerStateStream
+        .firstWhere((state) => state.playing && player.loadedUrls.length == 2)
+        .timeout(const Duration(seconds: 2));
     expect(player.loadedUrls.length, 2);
     expect(player.position, const Duration(seconds: 12));
-    await Future<void>.delayed(const Duration(milliseconds: 65));
+    // Metadata is published before the source finishes loading. Pause once
+    // playback actually starts, rather than racing an unfinished recovery.
+    await player.playerStateStream
+        .firstWhere(
+            (state) => state.playing && handler.mediaItem.value?.id == 'b')
+        .timeout(const Duration(seconds: 2));
     expect(handler.mediaItem.value?.id, 'b');
+    // Leave the synchronous fake stream callback before emitting pause.
+    await Future<void>.delayed(Duration.zero);
     await handler.pause();
     final loadCount = player.loadedUrls.length;
     await Future<void>.delayed(const Duration(milliseconds: 80));

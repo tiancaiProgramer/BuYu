@@ -126,14 +126,8 @@ class PanelView extends GetView<Home> {
               icon: Obx(() => Icon(controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? Icons.favorite : Icons.favorite_border,
                   size: 46.w, color: controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? Colors.red : controller.bodyColor.value))),
           Obx(() => IconButton(
-              onPressed: () {
-                if (controller.fm.value) {
-                  return;
-                }
-                if (controller.intervalClick(1)) {
-                  controller.audioServeHandler.skipToPrevious();
-                }
-              },
+              key: const ValueKey('portrait-previous'),
+              onPressed: () => controller.audioServeHandler.skipToPrevious(),
               icon: Icon(
                 TablerIcons.player_skip_back,
                 size: 46.w,
@@ -170,12 +164,8 @@ class PanelView extends GetView<Home> {
                     color: controller.bodyColor.value,
                   ))),
           IconButton(
-              onPressed: () {
-                if (controller.fm.value) {
-                  return;
-                }
-                controller.changeRepeatMode();
-              },
+              key: const ValueKey('portrait-repeat'),
+              onPressed: controller.changeRepeatMode,
               icon: Obx(() => Icon(
                     controller.getRepeatIcon(),
                     size: 43.w,
@@ -450,9 +440,6 @@ class PanelViewL extends GetView<Home> {
             children: [
               Obx(() => IconButton(
                   onPressed: () {
-                    if (controller.fm.value) {
-                      return;
-                    }
                     if (controller.intervalClick(1)) {
                       controller.audioServeHandler.skipToPrevious();
                     }
@@ -499,9 +486,6 @@ class PanelViewL extends GetView<Home> {
           )),
           IconButton(
               onPressed: () {
-                if (controller.fm.value) {
-                  return;
-                }
                 controller.changeRepeatMode();
               },
               icon: Obx(() => Icon(
@@ -674,9 +658,6 @@ class TestView extends GetView<Home> {
                 children: [
                   Obx(() => IconButton(
                       onPressed: () {
-                        if (controller.fm.value) {
-                          return;
-                        }
                         if (controller.intervalClick(1)) {
                           controller.audioServeHandler.skipToPrevious();
                         }
@@ -719,9 +700,6 @@ class TestView extends GetView<Home> {
               )),
           IconButton(
               onPressed: () {
-                if (controller.fm.value) {
-                  return;
-                }
                 controller.changeRepeatMode();
               },
               icon: Obx(() => Icon(

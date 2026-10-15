@@ -1,5 +1,7 @@
 # 横屏与 TV 试用版 2040
 
+> 这是 2040 预发布的历史说明。当前手机版本和验证范围以 [README](README.md) 和 [迭代记录](CHANGELOG.md) 为准；2.0.6 未发布新的 TV 安装包。
+
 基于 [2697a/bujuan](https://github.com/2697a/bujuan)，原作者 **2697a / sixbugs**。原 MIT 版权与许可证保持，并随 APK 提供。这是社区试用版本。
 
 ## 安装包

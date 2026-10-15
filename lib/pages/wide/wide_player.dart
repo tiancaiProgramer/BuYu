@@ -239,7 +239,14 @@ class WideMiniPlayer extends StatelessWidget {
 }
 
 class RemoteSeek extends StatefulWidget {
-  const RemoteSeek({super.key, required this.data, required this.onSeek});
+  const RemoteSeek(
+      {super.key,
+      required this.data,
+      required this.onSeek,
+      this.accent = wideAccent,
+      this.showHint = true});
+  final Color accent;
+  final bool showHint;
   final WidePlaybackData data;
   final Future<void> Function(Duration) onSeek;
   @override
@@ -313,15 +320,22 @@ class _RemoteSeekState extends State<RemoteSeek> {
                         min: 0,
                         max: math.max(1, total.inMilliseconds).toDouble(),
                         value: position.inMilliseconds.toDouble(),
-                        activeColor: wideAccent,
+                        activeColor: widget.accent,
                         onChanged: total > Duration.zero
                             ? (value) =>
                                 _schedule(Duration(milliseconds: value.round()))
                             : null))),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text(wideTime(position), style: const TextStyle(fontSize: 12)),
-              const Text('左右调整进度',
-                  style: TextStyle(fontSize: 11, color: Colors.white54)),
+              if (widget.showHint)
+                Text('左右调整进度',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color
+                            ?.withOpacity(.54))),
               Text(wideTime(total), style: const TextStyle(fontSize: 12)),
             ]),
           ]),
@@ -336,7 +350,15 @@ class _RemoteSeekState extends State<RemoteSeek> {
 }
 
 class WideLyrics extends StatefulWidget {
-  const WideLyrics({super.key, required this.data, required this.onSeek});
+  const WideLyrics(
+      {super.key,
+      required this.data,
+      required this.onSeek,
+      this.accent = wideAccent,
+      this.fontSize = 15,
+      this.lineExtent = 94});
+  final Color accent;
+  final double fontSize, lineExtent;
   final WidePlaybackData data;
   final Future<void> Function(Duration) onSeek;
   @override
@@ -346,7 +368,13 @@ class WideLyrics extends StatefulWidget {
 class _WideLyricsState extends State<WideLyrics> {
   final _scroll = ScrollController();
   bool _manual = false;
-  static const _extent = 94.0;
+  double get _extent => widget.lineExtent;
+
+  @override
+  void initState() {
+    super.initState();
+    _follow();
+  }
 
   void _follow() => WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scroll.hasClients || _manual) return;
@@ -419,16 +447,25 @@ class _WideLyricsState extends State<WideLyrics> {
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      fontSize: 15,
+                                      fontSize: widget.fontSize,
                                       color: i == current
-                                          ? wideAccent
-                                          : Colors.white70)),
+                                          ? widget.accent
+                                          : Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.color
+                                              ?.withOpacity(.65))),
                               if ((line.extText ?? '').isNotEmpty)
                                 Text(line.extText!,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.white54)),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color
+                                            ?.withOpacity(.54))),
                             ])),
                       );
                     }),

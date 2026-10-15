@@ -6,6 +6,7 @@ import 'package:on_audio_query/on_audio_query.dart';
 
 import '../../routes/router.gr.dart';
 import '../../widget/app_bar.dart';
+import '../../widget/landscape_cards.dart';
 import '../../widget/my_get_view.dart';
 import '../../widget/simple_extended_image.dart';
 
@@ -23,7 +24,21 @@ class LocalAr extends StatelessWidget {
           backgroundColor: Colors.transparent,
           title: const Text('歌手'),
         ),
-        body: _buildArtists(),
+        body: phoneLandscape(context)
+            ? GridView.builder(
+                padding: const EdgeInsets.all(12),
+                gridDelegate: landscapeCardGrid,
+                itemCount: artists.length,
+                itemBuilder: (_, index) => LandscapeCard(
+                    title: artists[index].artist,
+                    image:
+                        '${Local.to.directory?.path}/artists/${artists[index].id}.jpeg',
+                    onTap: () => context.router.push(const LocalSongView()
+                            .copyWith(queryParams: {
+                          'id': artists[index].id,
+                          'type': 'artist'
+                        }))))
+            : _buildArtists(),
       ),
     );
   }

@@ -5,6 +5,24 @@ import 'package:flutter/services.dart';
 
 const wideAccent = Color(0xff83e0d0);
 
+class RemoteFocusStyle extends InheritedTheme {
+  const RemoteFocusStyle(
+      {super.key,
+      required super.child,
+      required this.color,
+      required this.fill,
+      required this.selection});
+  final Color color, fill, selection;
+  static RemoteFocusStyle? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<RemoteFocusStyle>();
+  @override
+  bool updateShouldNotify(RemoteFocusStyle old) =>
+      color != old.color || fill != old.fill || selection != old.selection;
+  @override
+  Widget wrap(BuildContext context, Widget child) => RemoteFocusStyle(
+      color: color, fill: fill, selection: selection, child: child);
+}
+
 ThemeData wideTheme() => ThemeData.dark(useMaterial3: false).copyWith(
       scaffoldBackgroundColor: const Color(0xff111923),
       colorScheme: const ColorScheme.dark(primary: wideAccent),
@@ -69,14 +87,18 @@ class _RemoteButtonState extends State<RemoteButton> {
         },
         child: Material(
           color: _focused
-              ? const Color(0xff254b50)
+              ? RemoteFocusStyle.of(context)?.fill ?? const Color(0xff254b50)
               : widget.selected
-                  ? const Color(0xff253540)
+                  ? RemoteFocusStyle.of(context)?.selection ??
+                      const Color(0xff253540)
                   : Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
-                color: _focused ? wideAccent : Colors.transparent, width: 2),
+                color: _focused
+                    ? RemoteFocusStyle.of(context)?.color ?? wideAccent
+                    : Colors.transparent,
+                width: 2),
           ),
           child: InkWell(
             focusNode: widget.focusNode,

@@ -8,15 +8,34 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
 import '../../widget/app_bar.dart';
+import '../../widget/landscape_cards.dart';
 import '../home/home_controller.dart';
 
-class LocalSongView extends GetView<Local> {
+class LocalSongView extends StatefulWidget {
   const LocalSongView({Key? key}) : super(key: key);
 
   @override
+  State<LocalSongView> createState() => _LocalSongsState();
+}
+
+class _LocalSongsState extends State<LocalSongView> {
+  final Local controller = Local.to;
+  bool _requested = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_requested) return;
+    _requested = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      controller.context = context;
+      controller.getLocalSong();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    controller.context = context;
-    controller.getLocalSong();
     return MyGetView(
         child: Scaffold(
       backgroundColor: Colors.transparent,
@@ -27,18 +46,30 @@ class LocalSongView extends GetView<Local> {
       body: Obx(() => Visibility(
           replacement: const LoadingView(),
           visible: !controller.loadingSong.value,
-          child: ListView.builder(
-            itemBuilder: (context, index) => SongItem(
-              index: index,
-              mediaItem: controller.songs[index],
-              onTap: () {
-                Home.to.playByIndex(index, 'queueTitle',
-                    mediaItem: controller.songs);
-              },
-            ),
-            itemExtent: 120.w,
-            itemCount: controller.songs.length,
-          ))),
+          child: phoneLandscape(context)
+              ? GridView.builder(
+                  key: const PageStorageKey('local_song.dart:landscape'),
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: landscapeCardGrid,
+                  itemCount: controller.songs.length,
+                  itemBuilder: (_, index) => LandscapeCardSurface(
+                      child: SongItem(
+                          index: index,
+                          mediaItem: controller.songs[index],
+                          onTap: () => Home.to.playByIndex(index, 'queueTitle',
+                              mediaItem: controller.songs))))
+              : ListView.builder(
+                  itemBuilder: (context, index) => SongItem(
+                    index: index,
+                    mediaItem: controller.songs[index],
+                    onTap: () {
+                      Home.to.playByIndex(index, 'queueTitle',
+                          mediaItem: controller.songs);
+                    },
+                  ),
+                  itemExtent: 120.w,
+                  itemCount: controller.songs.length,
+                ))),
     ));
   }
 

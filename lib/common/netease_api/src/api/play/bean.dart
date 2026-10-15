@@ -229,6 +229,10 @@ class SongUrl {
   late String id;
 
   String? url;
+  String? level;
+  String? type;
+  String? encodeType;
+  Map<String, dynamic>? freeTrialInfo;
 
   //码率
   int? br;

@@ -4,12 +4,11 @@ import 'package:bujuan/widget/app_bar.dart';
 import 'package:bujuan/widget/my_get_view.dart';
 import 'package:bujuan/widget/request_widget/request_view.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+import '../../widget/song_collection.dart';
 import '../../common/netease_api/src/api/play/bean.dart';
 import '../../common/netease_api/src/dio_ext.dart';
 import '../../common/netease_api/src/netease_handler.dart';
-import '../play_list/playlist_view.dart';
 
 class TodayView extends StatefulWidget {
   const TodayView({Key? key}) : super(key: key);
@@ -20,14 +19,16 @@ class TodayView extends StatefulWidget {
 
 class _TodayViewState extends State<TodayView> {
   DioMetaData recommendSongListDioMetaData() {
-    return DioMetaData(joinUri('/api/v3/discovery/recommend/songs'), data: {}, options: joinOptions(cookies: {'os': 'ios'}));
+    return DioMetaData(joinUri('/api/v3/discovery/recommend/songs'),
+        data: {}, options: joinOptions(cookies: {'os': 'ios'}));
   }
 
   final List<MediaItem> _mediaItem = [];
 
   @override
   Widget build(BuildContext context) {
-    return MyGetView(child: Scaffold(
+    return MyGetView(
+        child: Scaffold(
       backgroundColor: Colors.transparent,
       appBar: MyAppBar(
         title: const Text('每日'),
@@ -39,17 +40,12 @@ class _TodayViewState extends State<TodayView> {
             _mediaItem
               ..clear()
               ..addAll(Home.to.song2ToMedia((playlist.data.dailySongs ?? [])));
-            return ListView.builder(
-              itemExtent: 130.w,
-              itemBuilder: (context, index) => SongItem(
-                index: index,
-                mediaItem: _mediaItem[index],
-                onTap: () {
-                  Home.to.playByIndex(index, 'queueTitle', mediaItem: _mediaItem);
-                },
-              ),
-              itemCount: _mediaItem.length,
-            );
+            return buildSongCollection(context,
+                songs: _mediaItem,
+                showArtwork: true,
+                storageId: 'daily',
+                onPlay: (index) => Home.to
+                    .playByIndex(index, 'queueTitle', mediaItem: _mediaItem));
           }),
     ));
   }

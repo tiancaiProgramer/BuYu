@@ -12,10 +12,12 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../routes/router.dart';
 import '../../widget/app_bar.dart';
+import '../../widget/landscape_cards.dart';
 import '../../widget/simple_extended_image.dart';
 import '../home/home_controller.dart';
 import '../user/user_controller.dart';
 import 'local_controller.dart';
+import '../downloads/downloads_view.dart';
 
 class LocalView extends GetView<Local> {
   const LocalView({super.key});
@@ -27,6 +29,7 @@ class LocalView extends GetView<Local> {
       backgroundColor: Colors.transparent,
       appBar: MyAppBar(
         backgroundColor: Colors.transparent,
+        leadingWidth: phoneLandscape(context) ? 68 : null,
         leading: IconButton(
             onPressed: () {
               if (Home.to.loginStatus.value == LoginStatus.login) {
@@ -58,47 +61,133 @@ class LocalView extends GetView<Local> {
         child: Obx(() => Visibility(
               visible: !controller.loading.value,
               replacement: const LoadingView(),
-              child: Column(
-                children: [
-                  _buildTopWidget(
-                      '本地SDCard歌曲', 'assets/images/local_song.svg', context,
-                      onTap: () => context.router.push(const LocalSongView()
-                          .copyWith(queryParams: {'id': 0, 'type': 'all'}))),
-                  _buildTopWidget(
-                      '网易云缓存歌曲', 'assets/images/netease_cache.svg', context,
-                      onTap: () async {
-                    var status = await Permission.manageExternalStorage.status;
-                    if (!status.isGranted) {
-                      status = await Permission.manageExternalStorage.request();
-                      if (status.isGranted) {
-                        if (context.mounted)
-                          context.router.push(const NeteaseCacheView());
-                      }
-                    } else {
-                      if (context.mounted)
-                        context.router.push(const NeteaseCacheView());
-                    }
-                  }),
-                  _buildHeader('本地歌手', context,
-                      onTap: () => context.router
-                          .push(LocalAr(artists: controller.artistsAll))),
-                  _buildArtists(),
-                  _buildHeader('本地专辑', context,
-                      onTap: () => context.router
-                          .push(LocalAlbum(albums: controller.albumsAll))),
-                  _buildAlbum()
-                ],
-              ),
+              child: phoneLandscape(context)
+                  ? _buildLandscape(context)
+                  : Column(
+                      children: [
+                        _buildTopWidget('本地SDCard歌曲',
+                            'assets/images/local_song.svg', context,
+                            onTap: () => context.router.push(
+                                const LocalSongView().copyWith(
+                                    queryParams: {'id': 0, 'type': 'all'}))),
+                        _buildTopWidget(
+                            '网易云缓存歌曲',
+                            'assets/images/netease_cache.svg',
+                            context, onTap: () async {
+                          var status =
+                              await Permission.manageExternalStorage.status;
+                          if (!status.isGranted) {
+                            status = await Permission.manageExternalStorage
+                                .request();
+                            if (status.isGranted) {
+                              if (context.mounted)
+                                context.router.push(const NeteaseCacheView());
+                            }
+                          } else {
+                            if (context.mounted)
+                              context.router.push(const NeteaseCacheView());
+                          }
+                        }),
+                        ListTile(leading: const Icon(Icons.download_outlined), title: const Text('下载管理'), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsView()))),
+                        _buildHeader('本地歌手', context,
+                            onTap: () => context.router
+                                .push(LocalAr(artists: controller.artistsAll))),
+                        _buildArtists(),
+                        _buildHeader('本地专辑', context,
+                            onTap: () => context.router.push(
+                                LocalAlbum(albums: controller.albumsAll))),
+                        _buildAlbum()
+                      ],
+                    ),
             )),
       ),
     );
   }
 
+  Future<void> _openCache(BuildContext context) async {
+    var status = await Permission.manageExternalStorage.status;
+    if (!status.isGranted)
+      status = await Permission.manageExternalStorage.request();
+    if (status.isGranted && context.mounted) {
+      context.router.push(const NeteaseCacheView());
+    }
+  }
+
+  Widget _buildLandscape(BuildContext context) => Column(children: [
+        GridView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: landscapeCardGrid,
+            children: [
+              LandscapeCard(title: '下载管理', artwork: const Icon(Icons.download_outlined, size: 32), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsView()))),
+              LandscapeCard(
+                  title: '本地SDCard歌曲',
+                  artwork: SvgPicture.asset('assets/images/local_song.svg'),
+                  onTap: () => context.router.push(const LocalSongView()
+                      .copyWith(queryParams: {'id': 0, 'type': 'all'}))),
+              LandscapeCard(
+                  title: '网易云缓存歌曲',
+                  artwork: SvgPicture.asset('assets/images/netease_cache.svg'),
+                  onTap: () => _openCache(context)),
+              LandscapeCard(
+                  title: '本地歌手',
+                  subtitle: '${controller.artistsAll.length} 位',
+                  artwork: const Icon(Icons.person_outline, size: 32),
+                  onTap: () => context.router
+                      .push(LocalAr(artists: controller.artistsAll))),
+              LandscapeCard(
+                  title: '本地专辑',
+                  subtitle: '${controller.albumsAll.length} 张',
+                  artwork: const Icon(Icons.album_outlined, size: 32),
+                  onTap: () => context.router
+                      .push(LocalAlbum(albums: controller.albumsAll))),
+            ]),
+        _buildHeader('本地歌手', context,
+            onTap: () =>
+                context.router.push(LocalAr(artists: controller.artistsAll))),
+        GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: landscapeCardGrid,
+            itemCount: controller.artists.length,
+            itemBuilder: (_, index) {
+              final artist = controller.artists[index];
+              return LandscapeCard(
+                  title: artist.artist,
+                  image:
+                      '${controller.directory?.path}/artists/${artist.id}.jpeg',
+                  onTap: () => context.router.push(const LocalSongView()
+                      .copyWith(
+                          queryParams: {'id': artist.id, 'type': 'artist'})));
+            }),
+        _buildHeader('本地专辑', context,
+            onTap: () =>
+                context.router.push(LocalAlbum(albums: controller.albumsAll))),
+        GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: landscapeCardGrid,
+            itemCount: controller.albums.length,
+            itemBuilder: (_, index) {
+              final album = controller.albums[index];
+              return LandscapeCard(
+                  title: album.album,
+                  subtitle: '${album.numOfSongs} 首 · ${album.artist ?? ''}',
+                  image:
+                      '${controller.directory?.path}/albums/${album.id}.jpeg',
+                  onTap: () => context.router.push(const LocalSongView()
+                      .copyWith(
+                          queryParams: {'id': album.id, 'type': 'album'})));
+            }),
+      ]);
+
   Widget _buildHeader(String title, BuildContext context,
       {VoidCallback? onTap}) {
     return InkWell(
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 30.w, vertical: 30.w),
+        padding: phoneLandscape(context)
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+            : EdgeInsets.symmetric(horizontal: 30.w, vertical: 30.w),
         alignment: Alignment.centerLeft,
         child: Row(
           children: [

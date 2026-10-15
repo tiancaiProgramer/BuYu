@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'personal_landscape.dart';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:auto_route/auto_route.dart';
@@ -37,9 +38,10 @@ class UserViewP extends GetView<UserController> {
   @override
   Widget build(BuildContext context) {
     controller.context = context;
+    final wide = MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
     return Obx(() => Visibility(
         visible: Home.to.loginStatus.value == LoginStatus.login,
-        replacement: _buildMeInfo(context),
+        replacement: wide ? _buildLandscape(context) : _buildMeInfo(context),
         child: Obx(() => Visibility(
               visible: !controller.loading.value,
               replacement: const LoadingView(),
@@ -194,7 +196,8 @@ class UserViewP extends GetView<UserController> {
               //     ],
               //   ),
               // ),
-              child: DraggableHome(
+              child: wide ? _buildLandscape(context) : DraggableHome(
+                key: const PageStorageKey("user:portrait"),
                 physics: const BouncingScrollPhysics(),
                 backgroundColor: Colors.transparent,
                 appBarColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(Home.to.background.value.isEmpty ? 1 : 0),
@@ -231,13 +234,8 @@ class UserViewP extends GetView<UserController> {
                     padding: const EdgeInsets.only(top: 0),
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 4,
-                    childAspectRatio: .75,
-                    //设置内边距
-                    //设置横向间距
-                    crossAxisSpacing: 40,
-                    //设置主轴间距
-                    mainAxisSpacing: 10,
+                    crossAxisCount: 4, childAspectRatio: .75,
+                    crossAxisSpacing: 40, mainAxisSpacing: 10,
                     children: controller.userItems
                         .map((e) => Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -299,6 +297,32 @@ class UserViewP extends GetView<UserController> {
               ),
             ))));
   }
+
+  Widget _buildLandscape(BuildContext context) => PersonalLandscape(
+      nickname: Home.to.userData.value.profile?.nickname ?? '',
+      avatar: Home.to.userData.value.profile?.avatarUrl ?? '',
+      liked: controller.play.value, playlists: controller.playlist,
+      onAvatar: () {
+        if (Home.to.loginStatus.value == LoginStatus.noLogin) {
+          context.router.pushNamed(Routes.login);
+        } else { Home.to.myDrawerController.open!(); }
+      },
+      onSearch: () => context.router.pushNamed(Routes.search),
+      onManage: () => context.router.pushNamed(Routes.playlistManager),
+      onPlaylist: (play) => context.router.push(const gr.PlayListView().copyWith(args: play)),
+      actions: controller.userItems.map((item) => PersonalAction(item.title, item.iconData, () {
+        if (Home.to.loginStatus.value == LoginStatus.noLogin) {
+          context.router.pushNamed(Routes.login); return;
+        }
+        if (item.routes == 'playFm') {
+          Home.to.audioServeHandler.setRepeatMode(AudioServiceRepeatMode.all);
+          Home.to.audioServiceRepeatMode.value = AudioServiceRepeatMode.all;
+          Home.to.box.put(repeatModeSp, AudioServiceRepeatMode.all.name);
+          Home.to.getFmSongList();
+        } else {
+          context.router.pushNamed(item.routes ?? '');
+        }
+      })).toList());
 
   Widget _buildHeader(String title, context, {String? actionStr}) {
     return Container(

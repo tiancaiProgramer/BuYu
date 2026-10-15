@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:get/get.dart';
+import '../../../widget/landscape_cards.dart';
 
 class ZPlayListView extends GetView<Home> {
   const ZPlayListView({super.key});
@@ -15,39 +16,55 @@ class ZPlayListView extends GetView<Home> {
 
   //播放列表
   Widget buildPlayList(BuildContext context) {
-    return Obx(() {
-      return Visibility(
-        visible: !controller.fm.value,
-        child: Listener(
-          onPointerMove: (event) {
-            if (event.position.dy > controller.scrollDown.value && controller.playListScrollController.offset == 0) {
-              controller.canScroll.value = false;
-            } else {
-              controller.canScroll.value = true;
-            }
-          },
-          onPointerUp: (event){
-            controller.canScroll.value = true;
-          },
-          onPointerDown: (event) {
-            //记录手指放下的y位置
-            controller.scrollDown.value = event.position.dy;
-            controller.canScroll.value = true;
-          },
-          child: Obx(() => ListView.builder(
-                physics: controller.canScroll.value ? const ClampingScrollPhysics() : const NeverScrollableScrollPhysics(),
-                controller: controller.playListScrollController,
-                padding: EdgeInsets.symmetric(horizontal: 50.w),
-                itemExtent: 110.w,
-                itemBuilder: (context, index) => _buildPlayListItem(controller.mediaItems[index], index, context),
-                itemCount: controller.mediaItems.length,
-              )),
-        ),
-      );
-    });
+    return Listener(
+      onPointerMove: (event) {
+        if (controller.playListScrollController.hasClients &&
+            event.position.dy > controller.scrollDown.value &&
+            controller.playListScrollController.offset == 0) {
+          controller.canScroll.value = false;
+        } else {
+          controller.canScroll.value = true;
+        }
+      },
+      onPointerUp: (event) {
+        controller.canScroll.value = true;
+      },
+      onPointerDown: (event) {
+        //记录手指放下的y位置
+        controller.scrollDown.value = event.position.dy;
+        controller.canScroll.value = true;
+      },
+      child: Obx(() => phoneLandscape(context)
+          ? GridView.builder(
+              key: const PageStorageKey('playing-queue:landscape'),
+              padding: const EdgeInsets.all(12),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisExtent: 74.666,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 8),
+              itemCount: controller.mediaItems.length,
+              itemBuilder: (context, index) => LandscapeCardSurface(
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: _buildPlayListItem(
+                          controller.mediaItems[index], index, context))))
+          : ListView.builder(
+              physics: controller.canScroll.value
+                  ? const ClampingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              controller: controller.playListScrollController,
+              padding: EdgeInsets.symmetric(horizontal: 50.w),
+              itemExtent: 110.w,
+              itemBuilder: (context, index) => _buildPlayListItem(
+                  controller.mediaItems[index], index, context),
+              itemCount: controller.mediaItems.length,
+            )),
+    );
   }
 
-  Widget _buildPlayListItem(MediaItem mediaItem, int index, BuildContext context) {
+  Widget _buildPlayListItem(
+      MediaItem mediaItem, int index, BuildContext context) {
     // return ListTile(
     //   title: Obx(() => Text(
     //     mediaItem.title,
@@ -70,28 +87,36 @@ class ZPlayListView extends GetView<Home> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              controller.landscape
+              phoneLandscape(context)
                   ? Text(
                       mediaItem.title,
                       maxLines: 1,
-                      style: TextStyle(fontSize: 30.sp, color: (Theme.of(context).iconTheme.color ?? Colors.black)),
+                      style: TextStyle(
+                          fontSize: 30.sp,
+                          color: (Theme.of(context).iconTheme.color ??
+                              Colors.black)),
                     )
                   : Obx(() => Text(
                         mediaItem.title,
                         maxLines: 1,
-                        style: TextStyle(fontSize: 30.sp, color: controller.bodyColor.value),
+                        style: TextStyle(
+                            fontSize: 30.sp, color: controller.bodyColor.value),
                       )),
               Padding(padding: EdgeInsets.symmetric(vertical: 4.w)),
-              controller.landscape
+              phoneLandscape(context)
                   ? Text(
                       mediaItem.artist ?? '',
                       maxLines: 1,
-                      style: TextStyle(fontSize: 24.sp, color: (Theme.of(context).iconTheme.color ?? Colors.black)),
+                      style: TextStyle(
+                          fontSize: 24.sp,
+                          color: (Theme.of(context).iconTheme.color ??
+                              Colors.black)),
                     )
                   : Obx(() => Text(
                         mediaItem.artist ?? '',
                         maxLines: 1,
-                        style: TextStyle(fontSize: 24.sp, color: controller.bodyColor.value),
+                        style: TextStyle(
+                            fontSize: 24.sp, color: controller.bodyColor.value),
                       ))
             ],
           )),
@@ -99,16 +124,20 @@ class ZPlayListView extends GetView<Home> {
                 visible: controller.mediaItem.value.id == mediaItem.id,
                 child: Icon(
                   TablerIcons.circle_letter_p,
-                  color: controller.landscape ? (Theme.of(context).iconTheme.color ?? Colors.black) : controller.bodyColor.value,
+                  color: phoneLandscape(context)
+                      ? (Theme.of(context).iconTheme.color ?? Colors.black)
+                      : controller.bodyColor.value,
                 ),
               )),
           Padding(padding: EdgeInsets.symmetric(horizontal: 10.w)),
           IconButton(
-              onPressed: () => controller.audioServeHandler.removeQueueItemAt(index),
-              icon: controller.landscape
+              onPressed: () =>
+                  controller.audioServeHandler.removeQueueItemAt(index),
+              icon: phoneLandscape(context)
                   ? Icon(
                       TablerIcons.trash_x,
-                      color: (Theme.of(context).iconTheme.color ?? Colors.black),
+                      color:
+                          (Theme.of(context).iconTheme.color ?? Colors.black),
                       size: 42.w,
                     )
                   : Obx(() => Icon(

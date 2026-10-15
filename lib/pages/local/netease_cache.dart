@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
 import '../../widget/app_bar.dart';
+import '../../widget/landscape_cards.dart';
 import '../home/home_controller.dart';
 import '../play_list/playlist_view.dart';
 
@@ -28,18 +29,31 @@ class NeteaseCacheView extends GetView<Netease> {
             replacement: const LoadingView(
               tips: '正在解密缓存文件...',
             ),
-            child: ListView.builder(
-              itemBuilder: (context, index) => SongItem(
-                index: index,
-                mediaItem: controller.mediaItems[index],
-                onTap: () {
-                  Home.to.playByIndex(index, 'queueTitle',
-                      mediaItem: controller.mediaItems);
-                },
-              ),
-              itemCount: controller.mediaItems.length,
-              itemExtent: 120.w,
-            ),
+            child: phoneLandscape(context)
+                ? GridView.builder(
+                    key: const PageStorageKey('netease_cache.dart:landscape'),
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: landscapeCardGrid,
+                    itemCount: controller.mediaItems.length,
+                    itemBuilder: (_, index) => LandscapeCardSurface(
+                        child: SongItem(
+                            index: index,
+                            mediaItem: controller.mediaItems[index],
+                            onTap: () => Home.to.playByIndex(
+                                index, 'queueTitle',
+                                mediaItem: controller.mediaItems))))
+                : ListView.builder(
+                    itemBuilder: (context, index) => SongItem(
+                      index: index,
+                      mediaItem: controller.mediaItems[index],
+                      onTap: () {
+                        Home.to.playByIndex(index, 'queueTitle',
+                            mediaItem: controller.mediaItems);
+                      },
+                    ),
+                    itemCount: controller.mediaItems.length,
+                    itemExtent: 120.w,
+                  ),
           )),
     ));
   }

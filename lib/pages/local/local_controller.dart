@@ -14,7 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../common/constants/enmu.dart';
 
 class Local extends GetxController {
-  RootIsolateToken rootIsolateToken = RootIsolateToken.instance!;
+  RootIsolateToken get rootIsolateToken => RootIsolateToken.instance!;
   OnAudioQuery query = GetIt.instance<OnAudioQuery>();
   RxBool loading = true.obs;
   RxBool loadingSong = true.obs;
