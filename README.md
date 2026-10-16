@@ -46,7 +46,7 @@
 
 ## TV / 车机
 
-本次 2.0.6 发布提供手机 APK。TV 界面与方向键支持仍在试用阶段，历史独立 TV 包见 [2040 预发布](https://github.com/tiancaiProgramer/bujuan-fixed/releases/tag/v2.0.5-wide-tv-preview.2040) 和 [TV_PREVIEW.md](TV_PREVIEW.md)；其中截图、操作范围和验证记录对应当时版本。本次没有新的 TV 安装包，也没有在小米电视、Chromecast 4K 或比亚迪车机上完成真机验证。
+旧的横屏 / TV 试用包（2040）因功能尚未完善、使用不便，已于 2026-10-16 撤下，暂不提供下载。当前请使用已发布的 2.0.6 手机横屏适配版。TV / 车机专用适配仍需完善与真机验证，后续完成后再单独发布。
 
 ## 编译
 
