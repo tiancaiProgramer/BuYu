@@ -1,3 +1,4 @@
+// Community maintenance and new features: tiancaiProgramer.
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'simple_extended_image.dart';

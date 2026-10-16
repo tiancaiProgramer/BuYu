@@ -1,3 +1,4 @@
+// Community maintenance and new features: tiancaiProgramer.
 package com.sixbugs.bujuan
 
 import android.app.Activity

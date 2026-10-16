@@ -1,6 +1,10 @@
 # 迭代记录
 
+当前维护者：**[tiancaiProgramer](https://github.com/tiancaiProgramer)**。后续新增功能及维护更新在对应版本条目中注明署名，原项目与第三方来源统一见 [CREDITS.md](CREDITS.md)。
+
 ## 2.0.6（2062）— 2026-10-16
+
+维护与新增功能：**tiancaiProgramer**。
 
 本次汇总 2041—2062 的手机横屏、播放页、设置和下载迭代。详细变更、安装与验证范围见 [2.0.6 发布说明](docs/releases/2.0.6-2062.md)。
 
@@ -19,4 +23,4 @@
 
 播放稳定性、歌曲信息同步、系统媒体控制、原版侧栏和本地音乐恢复、赞助二维码移除、安装包精简。对应记录：[FIXES.md](FIXES.md)。
 
-所有版本基于 [2697a/bujuan](https://github.com/2697a/bujuan)，原作者 2697a / sixbugs，保留 MIT 许可。
+原项目作者、版权声明与第三方组件许可见 [来源与致谢](CREDITS.md)；原 MIT 许可完整保留。

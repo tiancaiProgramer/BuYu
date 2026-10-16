@@ -1,3 +1,4 @@
+// Community maintenance and new features: tiancaiProgramer.
 enum AudioQuality {
   standard('标准'),
   higher('较高'),

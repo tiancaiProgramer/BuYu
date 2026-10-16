@@ -1,6 +1,8 @@
-# 不倦 BuJuan 修复版
+# 不倦 BuJuan · tiancaiProgramer 维护版
 
-基于 [2697a/bujuan](https://github.com/2697a/bujuan) 修改，**原作者为 [2697a](https://github.com/2697a) / sixbugs**。原项目版权声明 `Copyright (c) 2023 sixbugs` 与 [MIT 许可证](LICENSE) 保留。本仓库是社区修复版，不代表原作者的官方发布。
+**当前维护者：[tiancaiProgramer](https://github.com/tiancaiProgramer)**，负责本维护分支的后续开发、新增功能与问题修复。
+
+这是 BuJuan 的社区维护版。原项目来源、原作者及第三方组件信息集中记录在文末“来源与致谢”和 [CREDITS.md](CREDITS.md)。
 
 ## 下载与安装
 
@@ -21,6 +23,8 @@
 完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版细节与验证见 [2.0.6 发布说明](docs/releases/2.0.6-2062.md)。
 
 ## 2.0.6 更新
+
+维护与新增功能：**tiancaiProgramer**。
 
 - 完善手机横屏首页、头像侧栏、每日推荐、云盘、本地音乐、查看/管理及设置页；保留原版按钮和主题。
 - 横屏播放页采用封面与播放控制、歌词、侧边功能分区，处理两侧摄像头安全区、状态栏对比度、封面与专辑渐变背景。
@@ -60,6 +64,8 @@ flutter build apk --release --flavor tv --dart-define=BUJUAN_TV=true --split-per
 本仓库保留其他平台源码，但本次交付与验证针对 Android。
 
 ## 来源与致谢
+
+原作者为 **2697a / sixbugs**，原版权声明 `Copyright (c) 2023 sixbugs` 与 [MIT 许可证](LICENSE) 完整保留，并随安装包提供。原作者署名对应上游项目；本分支新增功能和后续维护署名 tiancaiProgramer。本仓库不代表原作者的官方发布。
 
 - 原项目与原作者：[2697a/bujuan](https://github.com/2697a/bujuan)、[2697a](https://github.com/2697a)。
 - 修复基础：上游 `2.0.0` 分支的 `d32b3c3` 提交；原侧栏与本地音乐从上游旧提交恢复。
