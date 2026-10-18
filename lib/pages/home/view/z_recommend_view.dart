@@ -30,7 +30,7 @@ class RecommendView extends GetView<Home> {
       }
       if (controller.panelControllerHome.isAttached)
         await controller.panelControllerHome.close();
-      router.push(const routes.ArtistsView().copyWith(args: artist));
+      router.push(routes.ArtistsView(artist: artist));
     } catch (_) {
       if (context.mounted)
         ScaffoldMessenger.of(context)

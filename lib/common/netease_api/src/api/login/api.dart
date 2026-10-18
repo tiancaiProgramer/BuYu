@@ -46,15 +46,18 @@ mixin ApiLogin {
     });
   }
 
-  DioMetaData loginCellPhoneDioMetaData(String phone, String password, {String countryCode = ''}) {
-    var params = {
-      'phone': phone,
-      'password': _encryptPassword(password),
-      'countrycode': countryCode,
-      'rememberLogin': true,
-      'timerstamp': '${DateTime.now()}',
+  DioMetaData _cellPhoneLoginRequest(String phone, {String countryCode = '86', String? password, String? captcha}) {
+    final params = <String, dynamic>{
+      'type': '1',
+      'https': 'true',
+      'phone': phone.trim(),
+      'countrycode': countryCode.isEmpty ? '86' : countryCode,
+      if (captcha != null) 'captcha': captcha.trim(),
+      if (password != null) 'password': _encryptPassword(password),
+      'remember': 'true',
+      'secureCaptcha': '',
     };
-    return DioMetaData(joinUri('/weapi/login/cellphone'),
+    return DioMetaData(joinUri('/weapi/w/login/cellphone'),
         data: params,
         options: joinOptions(
           userAgent: UserAgent.Pc,
@@ -62,33 +65,48 @@ mixin ApiLogin {
         ));
   }
 
+  DioMetaData loginCellPhoneDioMetaData(String phone, String password, {String countryCode = '86'}) =>
+      _cellPhoneLoginRequest(phone, password: password, countryCode: countryCode);
+
+  DioMetaData loginCellPhoneCaptchaDioMetaData(String phone, String captcha, {String countryCode = '86'}) =>
+      _cellPhoneLoginRequest(phone, captcha: captcha, countryCode: countryCode);
+
+  /// Login with a code explicitly requested by the user. Never sends a password.
+  Future<NeteaseAccountInfoWrap> loginCellPhoneCaptcha(String phone, String captcha, {String countryCode = '86'}) async {
+    final response = await Https.dioProxy.postUri(loginCellPhoneCaptchaDioMetaData(phone, captcha, countryCode: countryCode));
+    final info = NeteaseAccountInfoWrap.fromJson(response.data);
+    await NeteaseMusicApi().usc.onLogined(info);
+    return info;
+  }
+
   /// 手机号码登录
   /// [password] hex(md5(password))
   /// [countryCode] 国家区号
-  Future<NeteaseAccountInfoWrap> loginCellPhone(String phone, String password, {String countryCode = ''}) {
-    return Https.dioProxy.postUri(loginCellPhoneDioMetaData(phone, password, countryCode: countryCode)).then((Response value) {
+  Future<NeteaseAccountInfoWrap> loginCellPhone(String phone, String password, {String countryCode = '86'}) {
+    return Https.dioProxy.postUri(loginCellPhoneDioMetaData(phone, password, countryCode: countryCode)).then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      NeteaseMusicApi().usc.onLogined(info);
+      await NeteaseMusicApi().usc.onLogined(info);
       return info;
     });
   }
 
   DioMetaData loginEmailDioMetaData(String phone, String password) {
     var params = {
+      'type': '0',
+      'https': 'true',
       'username': phone,
       'password': _encryptPassword(password),
       'rememberLogin': true,
-      'timerstamp': '${DateTime.now()}',
     };
-    return DioMetaData(joinUri('/weapi/login'), data: params, options: joinOptions(userAgent: UserAgent.Pc, cookies: {'os': 'android'}));
+    return DioMetaData(joinUri('/weapi/w/login'), data: params, options: joinOptions(userAgent: UserAgent.Pc, cookies: {'os': 'android'}));
   }
 
   /// 邮箱登录
   /// [password] hex(md5(password))
   Future<NeteaseAccountInfoWrap> loginEmail(String phone, String password) {
-    return Https.dioProxy.postUri(loginEmailDioMetaData(phone, password)).then((Response value) {
+    return Https.dioProxy.postUri(loginEmailDioMetaData(phone, password)).then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      NeteaseMusicApi().usc.onLogined(info);
+      await NeteaseMusicApi().usc.onLogined(info);
       return info;
     });
   }
@@ -133,9 +151,9 @@ mixin ApiLogin {
 
   /// 获取当前登录账号信息
   Future<NeteaseAccountInfoWrap> loginAccountInfo() {
-    return Https.dioProxy.postUri(loginAccountInfoDioMetaData()).then((Response value) {
+    return Https.dioProxy.postUri(loginAccountInfoDioMetaData()).then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      NeteaseMusicApi().usc.onLogined(info);
+      await NeteaseMusicApi().usc.onLogined(info);
       return info;
     });
   }
@@ -180,7 +198,7 @@ mixin ApiLogin {
   }
 
   DioMetaData captchaSendDioMetaData(String phone, {String ctcode = '86'}) {
-    var params = {'ctcode': ctcode, 'cellphone': phone};
+    var params = {'ctcode': ctcode, 'cellphone': phone.trim(), 'secrete': 'music_middleuser_pclogin'};
     return DioMetaData(joinUri('/weapi/sms/captcha/sent'), data: params, options: joinOptions());
   }
 

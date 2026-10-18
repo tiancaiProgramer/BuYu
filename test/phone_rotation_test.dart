@@ -201,6 +201,42 @@ void main() {
     tester.view.resetPadding();
     tester.view.resetViewPadding();
     await tester.pump(const Duration(milliseconds: 400));
+    // A tablet has much more vertical space than the phone. The drawer must
+    // distribute all four controls through that space instead of stacking them.
+    for (final menuSize in [
+      const Size(844, 390),
+      const Size(1105.45, 692.36), // Connected 3040x1904 tablet at 440 dpi.
+      const Size(1280, 800),
+      const Size(1024, 600),
+      const Size(640, 300),
+    ]) {
+      tester.view.physicalSize = menuSize;
+      await tester.pump(const Duration(milliseconds: 800));
+      final area =
+          tester.getRect(find.byKey(const ValueKey('landscape-menu-actions')));
+      final slot = area.height / 4;
+      for (var i = 0; i < 4; i++) {
+        final bounds = tester.getRect(find.byKey(ValueKey('menu-action:$i')));
+        expect(bounds.center.dy, closeTo(area.top + slot * (i + .5), .01),
+            reason: '$menuSize menu $i');
+        expect(bounds.height, closeTo(slot, .01));
+        expect(bounds.width, greaterThanOrEqualTo(48));
+        expect(bounds.height, greaterThanOrEqualTo(48));
+        expect(bounds.bottom, lessThanOrEqualTo(menuSize.height));
+      }
+      expect(tester.takeException(), isNull);
+    }
+    tester.view.physicalSize = const Size(640, 200);
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.ensureVisible(find.byKey(const ValueKey('menu-action:3')));
+    await tester.pumpAndSettle();
+    final lastMenu =
+        tester.getRect(find.byKey(const ValueKey('menu-action:3')));
+    expect(lastMenu.height, greaterThanOrEqualTo(48));
+    expect(lastMenu.bottom, lessThanOrEqualTo(200));
+    expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(844, 390);
+    await tester.pump(const Duration(milliseconds: 800));
     home!.myDrawerController.close!();
     await tester.pump(const Duration(milliseconds: 400));
     navigator.currentState!.pushNamed('/personal');
@@ -292,21 +328,27 @@ void main() {
     tester.view.resetPadding();
     tester.view.resetViewPadding();
     await tester.pump();
-    home!.rx.value = PaletteGenerator.fromColors([PaletteColor(const Color(0xff153060), 100)]);
+    home!.rx.value = PaletteGenerator.fromColors(
+        [PaletteColor(const Color(0xff153060), 100)]);
     await tester.pump(const Duration(milliseconds: 400));
-    final background = tester.widget<AnimatedContainer>(find.byKey(const ValueKey('landscape-player-background')));
-    final colors = ((background.decoration as BoxDecoration).gradient as LinearGradient).colors;
+    final background = tester.widget<AnimatedContainer>(
+        find.byKey(const ValueKey('landscape-player-background')));
+    final colors =
+        ((background.decoration as BoxDecoration).gradient as LinearGradient)
+            .colors;
     expect(colors.first, isNot(AppTheme.light.scaffoldBackgroundColor));
     expect(colors.first.blue, greaterThan(colors.first.red));
     home!.changeStatusIconColor(true);
     await tester.pump();
     expect(SystemChrome.latestStyle!.statusBarIconBrightness, Brightness.light);
-    home!.rx.value = PaletteGenerator.fromColors([PaletteColor(const Color(0xffa02060), 100)]);
+    home!.rx.value = PaletteGenerator.fromColors(
+        [PaletteColor(const Color(0xffa02060), 100)]);
     await tester.pump(const Duration(milliseconds: 400));
     final playerContext = tester.element(find.byType(PhoneLandscapePlayer));
     expect(Theme.of(playerContext).primaryColor, Colors.white);
     final title = tester.widget<Text>(find.descendant(
-        of: find.byType(PhoneLandscapePlayer), matching: find.text(home!.mediaItem.value.title)));
+        of: find.byType(PhoneLandscapePlayer),
+        matching: find.text(home!.mediaItem.value.title)));
     expect(title.style!.color, Colors.white);
     await tester.tap(find.byKey(const ValueKey('phone-player-tab:1')));
     await tester.pump();

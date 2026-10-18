@@ -329,7 +329,7 @@ class _TvHomeState extends State<TvHome> {
                                             const Icon(TablerIcons.music,
                                                 color: Color(0xffe56260)),
                                             const SizedBox(width: 10),
-                                            const Text('BuJuan TV',
+                                            const Text('BuYu TV',
                                                 style: TextStyle(
                                                     fontSize: 20,
                                                     fontWeight:
@@ -586,11 +586,11 @@ class _TvHomeState extends State<TvHome> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const SizedBox(height: 16),
-        Text(_account == null ? '扫码登录网易云音乐' : '已登录：$_account'),
+        Text(_account == null ? '登录网易云音乐' : '已登录：$_account'),
         const SizedBox(height: 16),
         RemoteButton(
             onPressed: _login,
-            child: Text(_account == null ? '显示登录二维码' : '切换账号')),
+            child: Text(_account == null ? '选择登录方式' : '切换账号')),
         const SizedBox(height: 8),
         if (_account != null)
           RemoteButton(

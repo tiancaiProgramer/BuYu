@@ -8,7 +8,13 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: AudioServiceActivity() {
     private var audioDownloads: AudioDownloads? = null
+    private var webLoginResult: MethodChannel.Result? = null
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 7931) {
+            webLoginResult?.success(if (resultCode == RESULT_OK) data?.getStringExtra("cookies") else null)
+            webLoginResult = null
+            return
+        }
         if (audioDownloads?.onActivityResult(requestCode, resultCode, data) != true)
             super.onActivityResult(requestCode, resultCode, data)
     }
@@ -16,6 +22,22 @@ class MainActivity: AudioServiceActivity() {
         super.configureFlutterEngine(flutterEngine)
         val downloads = AudioDownloads(this)
         audioDownloads = downloads
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bujuan/auth")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "webLogin") {
+                    result.notImplemented()
+                } else if (webLoginResult != null) {
+                    result.error("busy", "网页登录已打开", null)
+                } else {
+                    webLoginResult = result
+                    try {
+                        startActivityForResult(Intent(this, WebLoginActivity::class.java), 7931)
+                    } catch (error: Exception) {
+                        webLoginResult = null
+                        result.error("unavailable", "无法打开官方登录页", null)
+                    }
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bujuan/downloads")
             .setMethodCallHandler { call, result -> downloads.handle(call, result) }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bujuan/display")

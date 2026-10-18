@@ -46,6 +46,7 @@ class NeteaseMusicApi
         PersistCookieJar(storage: FileStorage(provider.getCookieSavedPath())));
 
     _initDio(Https.dio, debug, true);
+    await NeteaseMusicApi().usc.init();
 
     return true;
   }
@@ -136,7 +137,11 @@ class UserLoginStateController {
 
   UserLoginStateController();
 
-  Future<void> init() async {
+  late final Future<void> _initialization = _initialize();
+
+  Future<void> init() => _initialization;
+
+  Future<void> _initialize() async {
     _checkCreateSavePath();
     await _readAccountInfo();
     _refreshLoginState((await loadCookies()).isNotEmpty && _accountInfo != null
@@ -175,10 +180,14 @@ class UserLoginStateController {
     });
   }
 
-  void onLogined(NeteaseAccountInfoWrap infoWrap) {
+  Future<void> onLogined(NeteaseAccountInfoWrap infoWrap) async {
+    await init();
+    // Failed credentials and anonymous account responses are not a login.
+    if (infoWrap.code != RET_CODE_OK || infoWrap.profile == null ||
+        infoWrap.profile!.userId.isEmpty) return;
+    await _saveAccountInfo(infoWrap);
     _accountInfo = infoWrap;
     _refreshLoginState(LoginState.Logined);
-    _saveAccountInfo(infoWrap);
   }
 
   void onAnonimousLogined(AnonimousLoginRet anonimousLoginRet) {
@@ -188,12 +197,12 @@ class UserLoginStateController {
   Future<void> onLogout() async {
     await deleteAllCookie();
     _accountInfo = null;
-    _saveAccountInfo(null);
+    await _saveAccountInfo(null);
     _refreshLoginState(LoginState.Logout);
   }
 
-  void _saveAccountInfo(NeteaseAccountInfoWrap? infoWrap) {
-    _saveFile().writeAsString(jsonEncode(infoWrap), flush: true);
+  Future<void> _saveAccountInfo(NeteaseAccountInfoWrap? infoWrap) async {
+    await _saveFile().writeAsString(jsonEncode(infoWrap), flush: true);
   }
 
   Future<void> _readAccountInfo() async {
@@ -201,6 +210,10 @@ class UserLoginStateController {
       var accountInfo = _saveFile().readAsStringSync();
 
       _accountInfo = NeteaseAccountInfoWrap.fromJson(jsonDecode(accountInfo));
+      if (_accountInfo!.code != RET_CODE_OK || _accountInfo!.profile == null ||
+          _accountInfo!.profile!.userId.isEmpty) {
+        throw const FormatException('Invalid cached account');
+      }
     } catch (e) {
       print('login info error');
       await onLogout();

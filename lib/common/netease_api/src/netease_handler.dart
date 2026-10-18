@@ -36,7 +36,9 @@ void neteaseInterceptor(
     option.headers[HttpHeaders.userAgentHeader] =
         _chooseUserAgent(option.extra['userAgent']);
 
-    var cookies = await loadCookies(host: option.uri);
+    // A web session is verified independently before replacing the saved session.
+    var cookies = option.extra['sessionCookies'] as List<Cookie>? ??
+        await loadCookies(host: option.uri);
 
     var cookiesSb = StringBuffer(CookieManager.getCookies(cookies));
     option.extra['cookies'].forEach((key, value) {

@@ -131,7 +131,7 @@ class _GuideViewState extends State<GuideView> with WidgetsBindingObserver {
         Lottie.asset('assets/lottie/personal_character.json', width: 750.w / 1.6),
         Padding(padding: EdgeInsets.symmetric(vertical: 20.w)),
         Text(
-          '欢迎来到不倦',
+          '欢迎来到 BuYu',
           style: TextStyle(fontSize: 42.sp, fontWeight: FontWeight.bold),
         ),
         Padding(padding: EdgeInsets.symmetric(vertical: 10.w)),

@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../common/display_mode.dart';
 import '../home/home_controller.dart';
+import '../login/web_login.dart';
 import 'remote_button.dart';
 import 'wide_catalog.dart';
 import 'wide_playback.dart';
@@ -314,7 +315,7 @@ class _WideHomeState extends State<WideHome> {
                               Row(children: [
                                 const Icon(Icons.music_note, color: wideAccent),
                                 const SizedBox(width: 8),
-                                Text(widget.tv ? 'BuJuan TV' : '不倦 BuJuan',
+                                Text(widget.tv ? 'BuYu TV' : 'BuYu',
                                     style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold)),
@@ -561,11 +562,11 @@ class _WideHomeState extends State<WideHome> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const SizedBox(height: 16),
-        Text(_account == null ? '扫码登录网易云音乐' : '已登录：$_account'),
+        Text(_account == null ? '登录网易云音乐' : '已登录：$_account'),
         const SizedBox(height: 16),
         RemoteButton(
             onPressed: _login,
-            child: Text(_account == null ? '显示登录二维码' : '切换账号')),
+            child: Text(_account == null ? '选择登录方式' : '切换账号')),
         const SizedBox(height: 8),
         if (_account != null)
           RemoteButton(
@@ -622,8 +623,9 @@ class _WideHomeState extends State<WideHome> {
 }
 
 class WideLoginDialog extends StatefulWidget {
-  const WideLoginDialog({super.key, required this.catalog});
+  const WideLoginDialog({super.key, required this.catalog, this.webLogin});
   final WideCatalog catalog;
+  final Future<bool> Function()? webLogin;
   @override
   State<WideLoginDialog> createState() => _WideLoginDialogState();
 }
@@ -634,6 +636,34 @@ class _WideLoginDialogState extends State<WideLoginDialog> {
   Timer? _timer;
   int _request = 0;
   bool _checking = false;
+  bool _webBusy = false;
+
+  Future<void> _openWeb() async {
+    if (_webBusy) return;
+    ++_request;
+    _timer?.cancel();
+    setState(() {
+      _webBusy = true;
+      _qr = null;
+      _status = '请在官方网页完成认证';
+    });
+    String? error;
+    try {
+      if (await (widget.webLogin ?? WebLogin().login)()) {
+        if (mounted) Navigator.pop(context, true);
+        return;
+      }
+    } on WebLoginException catch (e) {
+      error = e.message;
+    } catch (_) {
+      error = '网页登录未完成，请检查网络后重试';
+    } finally {
+      if (mounted) setState(() => _webBusy = false);
+    }
+    if (!mounted) return;
+    await _refresh();
+    if (mounted && error != null) setState(() => _status = error!);
+  }
 
   @override
   void initState() {
@@ -709,9 +739,13 @@ class _WideLoginDialogState extends State<WideLoginDialog> {
             Text(_status),
           ])),
           actions: [
+            if (defaultTargetPlatform == TargetPlatform.android)
+              RemoteButton(
+                  onPressed: _webBusy ? null : _openWeb,
+                  child: Text(_webBusy ? '正在认证…' : '官方网页登录')),
             RemoteButton(
                 autofocus: true,
-                onPressed: _refresh,
+                onPressed: _webBusy ? null : _refresh,
                 child: const Text('刷新二维码')),
             RemoteButton(
                 onPressed: () => Navigator.pop(context, false),

@@ -47,7 +47,7 @@ class UpdateView extends StatelessWidget {
               Text(params.getString('versionInfo', ''),
                   style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 16),
-              const Text('更新来源：tiancaiProgramer / bujuan-fixed',
+              const Text('更新来源：tiancaiProgramer / BuYu',
                   style: TextStyle(fontSize: 12)),
               const SizedBox(height: 12),
               ElevatedButton(

@@ -15,6 +15,31 @@ class MenuView extends GetView<Home> {
   Widget build(BuildContext context) {
     final wide =
         MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
+    Widget action(int index, {bool fill = false}) => IconButton(
+          key: ValueKey('menu-action:$index'),
+          constraints: fill ? const BoxConstraints.expand() : null,
+          tooltip: controller.leftMenus[index].title,
+          onPressed: () {
+            if (!Home.to.landscape) controller.myDrawerController.close!();
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (controller.leftMenus[index].path.isEmpty) {
+                Home.to.sleep(context);
+                return;
+              }
+              if (controller.leftMenus[index].pathUrl.isEmpty) {
+                context.router.pushNamed(controller.leftMenus[index].path);
+                return;
+              }
+              context.router.replaceNamed(controller.leftMenus[index].path);
+            });
+          },
+          icon: Obx(() => Icon(controller.leftMenus[index].icon,
+              size: 52.sp,
+              color: controller.currPathUrl.value ==
+                      controller.leftMenus[index].pathUrl
+                  ? Theme.of(context).primaryColor
+                  : Theme.of(context).scaffoldBackgroundColor)),
+        );
     return SafeArea(
         // This drawer is on the left; a right-side camera inset belongs to
         // the main page and must not shift the drawer contents to the left.
@@ -42,39 +67,39 @@ class MenuView extends GetView<Home> {
             ),
             if (wide) const SizedBox(height: 24),
             Expanded(
-                child: ListView.builder(
-              padding: EdgeInsets.symmetric(vertical: wide ? 4 : 140.w),
-              itemBuilder: (context1, index) => Container(
-                padding: EdgeInsets.symmetric(vertical: wide ? 2 : 12.w),
-                child: IconButton(
-                  key: ValueKey('menu-action:$index'),
-                  onPressed: () {
-                    if (!Home.to.landscape)
-                      controller.myDrawerController.close!();
-                    Future.delayed(const Duration(milliseconds: 200), () {
-                      if (controller.leftMenus[index].path.isEmpty) {
-                        Home.to.sleep(context);
-                        return;
-                      }
-                      if (controller.leftMenus[index].pathUrl.isEmpty) {
-                        context.router
-                            .pushNamed(controller.leftMenus[index].path);
-                        return;
-                      }
-                      context.router
-                          .replaceNamed(controller.leftMenus[index].path);
-                    });
-                  },
-                  icon: Obx(() => Icon(controller.leftMenus[index].icon,
-                      size: 52.sp,
-                      color: controller.currPathUrl.value ==
-                              controller.leftMenus[index].pathUrl
-                          ? Theme.of(context).primaryColor
-                          : Theme.of(context).scaffoldBackgroundColor)),
-                ),
-              ),
-              itemCount: controller.leftMenus.length,
-            )),
+                child: wide
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: LayoutBuilder(
+                          key: const ValueKey('landscape-menu-actions'),
+                          builder: (context, constraints) {
+                            final count = controller.leftMenus.length;
+                            final minimum = (52.sp + 16).clamp(
+                                kMinInteractiveDimension, double.infinity);
+                            if (constraints.maxHeight >= minimum * count) {
+                              // Like the right shortcuts, each action occupies an
+                              // equal share of the space below the avatar.
+                              return Column(children: [
+                                for (var i = 0; i < count; i++)
+                                  Expanded(child: action(i, fill: true)),
+                              ]);
+                            }
+                            // Keep every control reachable in a short split window.
+                            return ListView.builder(
+                              padding: EdgeInsets.zero,
+                              itemExtent: minimum.toDouble(),
+                              itemCount: count,
+                              itemBuilder: (_, i) => action(i, fill: true),
+                            );
+                          },
+                        ))
+                    : ListView.builder(
+                        padding: EdgeInsets.symmetric(vertical: 140.w),
+                        itemCount: controller.leftMenus.length,
+                        itemBuilder: (_, index) => Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12.w),
+                            child: action(index)),
+                      )),
           ],
         ));
   }

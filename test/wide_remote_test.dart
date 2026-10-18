@@ -314,6 +314,41 @@ void main() {
     expect(FocusManager.instance.primaryFocus, same(focus));
   });
 
+  for (final authenticated in [false, true]) {
+    testWidgets('wide login returns from official web auth ($authenticated)',
+        (tester) async {
+      final pending = Completer<bool>();
+      await mount(
+          tester,
+          Builder(
+              builder: (context) => RemoteButton(
+                    onPressed: () => showDialog<bool>(
+                        context: context,
+                        builder: (_) => WideLoginDialog(
+                            catalog: FakeCatalog(),
+                            webLogin: () => pending.future)),
+                    child: const Text('open auth'),
+                  )),
+          size: const Size(640, 360));
+      await tester.tap(find.text('open auth'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('官方网页登录'));
+      await tester.pump();
+      expect(find.text('正在认证…'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+      expect(find.text('二维码过期，请刷新'), findsNothing);
+      pending.complete(authenticated);
+      await tester.pumpAndSettle();
+      expect(find.byType(WideLoginDialog),
+          authenticated ? findsNothing : findsOneWidget);
+      expect(tester.takeException(), isNull);
+      if (!authenticated) {
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+      }
+    });
+  }
+
   testWidgets('QR dialog fits short landscape and refresh is reachable',
       (tester) async {
     await mount(

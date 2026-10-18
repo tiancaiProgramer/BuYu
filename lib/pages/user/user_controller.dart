@@ -69,15 +69,17 @@ class UserController extends GetxController {
   static UserController get to => Get.find();
 
   //获取用户信息
-  getUserState() async {
+  Future<bool> getUserState() async {
     try {
-      NeteaseAccountInfoWrap neteaseAccountInfoWrap = await NeteaseMusicApi().loginAccountInfo();
+      NeteaseAccountInfoWrap neteaseAccountInfoWrap = await NeteaseMusicApi()
+          .loginAccountInfo().timeout(const Duration(seconds: 15));
       if (neteaseAccountInfoWrap.code == 200 && neteaseAccountInfoWrap.profile != null) {
+        await Home.to.box.put(loginData, jsonEncode(neteaseAccountInfoWrap.toJson()));
         Home.to.userData.value = neteaseAccountInfoWrap;
         Home.to.loginStatus.value = LoginStatus.login;
-        Home.to.box.put(loginData, jsonEncode(neteaseAccountInfoWrap.toJson()));
         getUserPlayList();
         _getUserLikeSongIds();
+        return true;
       } else {
         WidgetUtil.showToast('登录失效,请重新登录');
         Home.to.loginStatus.value = LoginStatus.noLogin;
@@ -86,6 +88,7 @@ class UserController extends GetxController {
       Home.to.loginStatus.value = LoginStatus.noLogin;
       WidgetUtil.showToast('获取用户资料失败，请检查网络');
     }
+    return false;
   }
 
   clearUser() {

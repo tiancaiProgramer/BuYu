@@ -49,7 +49,7 @@ void main() {
     final client = Dio();
     client.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
       expect(options.uri.host, 'api.github.com');
-      expect(options.uri.path, '/repos/tiancaiProgramer/bujuan-fixed/releases');
+      expect(options.uri.path, '/repos/tiancaiProgramer/BuYu/releases');
       handler.resolve(Response(requestOptions: options, data: [
         release('v2.0.5-fixed.2039', ['bujuan-2.0.5-fixed.apk']),
         release('v2.0.6-preview.2053', ['bujuan-mobile-arm64.apk'],
@@ -62,6 +62,24 @@ void main() {
     final updates = GitHubUpdates(client: client);
     expect((await updates.latest())!.version.build, 2053);
     expect((await updates.latest(tv: true))!.version.build, 2090);
+    client.close();
+  });
+
+  test('renamed BuYu repository release links are accepted', () async {
+    final client = Dio();
+    client.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+      handler.resolve(Response(requestOptions: options, data: [
+        {
+          ...release('v2.0.7.2071', ['BuYu-2.0.7-2071-arm64.apk']),
+          'html_url':
+              'https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.7.2071'
+        },
+      ]));
+    }));
+    final result = await GitHubUpdates(client: client).latest();
+    expect(result?.version.label, '2.0.7 (2071)');
+    expect(
+        result?.page.path, '/tiancaiProgramer/BuYu/releases/tag/v2.0.7.2071');
     client.close();
   });
 

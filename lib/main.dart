@@ -85,7 +85,7 @@ main() async {
         builder: (BuildContext context, Widget? child) {
           HomeBinding().dependencies();
           return GetMaterialApp.router(
-            title: "Bujuan",
+            title: "BuYu",
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
             // showPerformanceOverlay: true,

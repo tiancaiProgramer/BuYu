@@ -355,7 +355,7 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
           ListTile(
               key: const ValueKey('github-update-setting'),
               title: Text('检测更新', style: TextStyle(fontSize: 30.sp)),
-              subtitle: const Text('tiancaiProgramer / bujuan-fixed'),
+              subtitle: const Text('tiancaiProgramer / BuYu'),
               trailing: checking
                   ? const SizedBox(
                       width: 20,

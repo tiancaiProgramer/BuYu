@@ -26,7 +26,7 @@ void main() {
     expect(
         TvArtwork.forSong(MediaItem(
             id: '1', title: '封面', artUri: Uri.file('/tmp/album art.jpg'))),
-        '/tmp/album art.jpg');
+        Platform.isWindows ? r'\tmp\album art.jpg' : '/tmp/album art.jpg');
     expect(
         TvArtwork.forSong(const MediaItem(
             id: '1', title: '封面', extras: {'image': '/tmp/preferred.jpg'})),
@@ -61,7 +61,7 @@ void main() {
     final file = await tester.runAsync(() async {
       final directory = await Directory.systemTemp.createTemp('bujuan-cover');
       final bytes = await rootBundle.load('assets/images/logo.png');
-      return File('${directory.path}/cover.png')
+      return File('${directory.path}${Platform.pathSeparator}cover.png')
           .writeAsBytes(bytes.buffer.asUint8List());
     });
     final model = fixture.playback();

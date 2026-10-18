@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.sixbugs" "\0"
-            VALUE "FileDescription", "bujuan" "\0"
+            VALUE "FileDescription", "BuYu" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "bujuan" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2022 com.sixbugs. All rights reserved." "\0"
             VALUE "OriginalFilename", "bujuan.exe" "\0"
-            VALUE "ProductName", "bujuan" "\0"
+            VALUE "ProductName", "BuYu" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

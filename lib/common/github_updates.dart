@@ -44,13 +44,13 @@ class GitHubUpdates {
                 receiveTimeout: const Duration(seconds: 12),
                 headers: {
                   'Accept': 'application/vnd.github+json',
-                  'User-Agent': 'BuJuan-Community-Update'
+                  'User-Agent': 'BuYu-Community-Update'
                 }));
   final Dio client;
-  static const repository = 'https://github.com/tiancaiProgramer/bujuan-fixed';
+  static const repository = 'https://github.com/tiancaiProgramer/BuYu';
   static const releasesPage = '$repository/releases';
   static const endpoint =
-      'https://api.github.com/repos/tiancaiProgramer/bujuan-fixed/releases';
+      'https://api.github.com/repos/tiancaiProgramer/BuYu/releases';
 
   Future<GitHubRelease?> latest({bool tv = false}) async {
     final response =

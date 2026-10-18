@@ -1,17 +1,21 @@
-# 不倦 BuJuan · tiancaiProgramer 维护版
+# BuYu · tiancaiProgramer 维护版
 
 **当前维护者：[tiancaiProgramer](https://github.com/tiancaiProgramer)**，负责本维护分支的后续开发、新增功能与问题修复。
 
 这是 BuJuan 的社区维护版。原项目来源、原作者及第三方组件信息集中记录在文末“来源与致谢”和 [CREDITS.md](CREDITS.md)。
 
+自 2026-10-18 起，应用对外名称改为 **BuYu**，后续新安装包统一使用 `BuYu` 前缀；以下已发布版本保留其原始名称和下载链接。
+
 ## 下载与安装
 
-当前版本 **2.0.6（2062）**：[下载发布版](https://github.com/tiancaiProgramer/bujuan-fixed/releases/tag/v2.0.6.2062)。
+当前版本 **BuYu 2.0.7（2071）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.7.2071)。
+
+左侧横屏菜单按可用高度均分按钮，包含官方网页登录与二维码登录修复，并同步仓库更名后的更新地址。平板已验证菜单分布及点击区域。详见 [2.0.7 发布说明](docs/releases/2.0.7-2071.md) 和 [网页登录说明](docs/login-methods-2066.md)。
 
 | 安装包 | 适用设备 | 大小 |
 | --- | --- | --- |
-| `bujuan-2.0.6-2062-arm64.apk` | 小米 15 等 ARM 64 位安卓手机 | 约 13.4 MB |
-| `bujuan-2.0.6-2062-arm32.apk` | 运行 32 位 ARM 系统的旧设备 | 约 13.1 MB |
+| [BuYu-2.0.7-2071-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.7.2071/BuYu-2.0.7-2071-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.5 MB |
+| [BuYu-2.0.7-2071-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.7.2071/BuYu-2.0.7-2071-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.2 MB |
 
 - 最低 Android 5.0；Android 4.4 尚未支持。
 - 交付 APK 与本次修复所用原 2.0.5 APK 签名一致，可覆盖升级并保留数据。
@@ -20,7 +24,7 @@
 - 播放和下载音质分别设置，下载时也可单独选择；保存目录可在设置内修改。
 - 更新检查已关联本仓库 Releases，按应用版本及内部版本号判断更新。
 
-完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版细节与验证见 [2.0.6 发布说明](docs/releases/2.0.6-2062.md)。
+完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版细节与验证见 [2.0.7 发布说明](docs/releases/2.0.7-2071.md)。
 
 ## 2.0.6 更新
 

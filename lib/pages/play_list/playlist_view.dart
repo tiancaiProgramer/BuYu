@@ -398,7 +398,7 @@ class ArtistsItem extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       onTap: () {
-        context.router.push(const gr.ArtistsView().copyWith(args: artists));
+        context.router.push(gr.ArtistsView(artist: artists));
       },
     );
   }
