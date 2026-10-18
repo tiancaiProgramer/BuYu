@@ -1,4 +1,4 @@
-# BuYu · tiancaiProgramer 维护版
+# BuYu
 
 **当前维护者：[tiancaiProgramer](https://github.com/tiancaiProgramer)**，负责本维护分支的后续开发、新增功能与问题修复。
 
