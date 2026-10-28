@@ -1,3 +1,4 @@
+import '../common/music/music_source.dart';
 // Community maintenance and new features: tiancaiProgramer.
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
@@ -41,7 +42,7 @@ class DownloadSongButton extends StatelessWidget {
   final MediaItem song;
   @override
   Widget build(BuildContext context) {
-    if (song.id.isEmpty || song.extras?['type'] == 'local')
+    if (song.id.isEmpty || isLocalSong(song))
       return const SizedBox.shrink();
     final downloads = Downloads.instance;
     return AnimatedBuilder(
@@ -99,6 +100,6 @@ class _DownloadQualityPickerState extends State<DownloadQualityPicker> {
                         ? null
                         : (_) => Navigator.pop(context, quality)),
             ],
-            footer: Text('保存至：${downloads.folderLabel}\n完成后显示实际音频规格'));
+            footer: Text('保存至：${downloads.folderLabel}\n${sourceOf(widget.song) == MusicSource.qq ? 'QQ资源按当前账号返回；不可用时回退音质，完成后显示实际规格' : '完成后显示实际音频规格'}'));
       });
 }

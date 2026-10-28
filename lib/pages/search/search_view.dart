@@ -1,3 +1,5 @@
+import '../../common/app_style.dart';
+import '../music/mixed_search_view.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/widget/my_get_view.dart';
@@ -23,7 +25,8 @@ class SearchView extends StatefulWidget {
   State<SearchView> createState() => _SearchViewState();
 }
 
-class _SearchViewState extends State<SearchView> with SingleTickerProviderStateMixin {
+class _SearchViewState extends State<SearchView>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _search = TextEditingController();
   final PageController _pageController = PageController();
   List<FlashyNavbarItem> items = [
@@ -34,32 +37,38 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
   ];
   final List<Tab> tabs = [
     const Tab(
-      text: '单曲',
+      text: '双源单曲',
     ),
     const Tab(
-      text: '歌单',
+      text: '网易歌单',
     ),
     const Tab(
-      text: '专辑',
+      text: '网易专辑',
     ),
     const Tab(
-      text: '歌手',
+      text: '网易歌手',
     ),
   ];
   TabController? _tabController;
 
   String searchContent = '';
 
-  DioMetaData searchSongDioMetaData(String keyword, int type, {bool cloudSearch = true, int offset = 0, int limit = 30}) {
+  DioMetaData searchSongDioMetaData(String keyword, int type,
+      {bool cloudSearch = true, int offset = 0, int limit = 30}) {
     var params = {'s': keyword, 'type': type, 'limit': limit, 'offset': offset};
-    return DioMetaData(_searchUrl(cloudSearch), data: params, options: joinOptions());
+    return DioMetaData(_searchUrl(cloudSearch),
+        data: params, options: joinOptions());
   }
 
   DioMetaData searchHotKeyDioMetaData() {
-    return DioMetaData(joinUri('/weapi/search/hot'), data: {'type': 1111}, options: joinOptions(userAgent: UserAgent.Mobile));
+    return DioMetaData(joinUri('/weapi/search/hot'),
+        data: {'type': 1111},
+        options: joinOptions(userAgent: UserAgent.Mobile));
   }
 
-  Uri _searchUrl(bool cloudSearch) => cloudSearch ? joinUri('/weapi/cloudsearch/pc') : joinUri('/weapi/search/get');
+  Uri _searchUrl(bool cloudSearch) => cloudSearch
+      ? joinUri('/weapi/cloudsearch/pc')
+      : joinUri('/weapi/search/get');
 
   @override
   void initState() {
@@ -87,7 +96,8 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return MyGetView(child: Scaffold(
+    return MyGetView(
+        child: Scaffold(
       // This route is opaque. Paint its background during the transition too,
       // so the previous page cannot show through the search field or body.
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -123,75 +133,64 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
           replacement: RequestWidget<SearchKeyWrapX>(
               dioMetaData: searchHotKeyDioMetaData(),
               childBuilder: (data) => Padding(
-                padding: EdgeInsets.symmetric(horizontal: 30.w, vertical: 30.w),
-                child: Wrap(
-                  children: data.result.hots
-                      .map((e) => InkWell(
-                    child: Container(
-                      margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 15.w),
-                      padding: EdgeInsets.symmetric(vertical: 5.w, horizontal: 10.w),
-                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSecondary, borderRadius: BorderRadius.circular(30.w)),
-                      child: Text(
-                        e.first ?? '',
-                        style: TextStyle(fontSize: 26.sp),
-                      ),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 30.w, vertical: 30.w),
+                    child: Wrap(
+                      children: data.result.hots
+                          .map((e) => InkWell(
+                                child: Container(
+                                  margin: EdgeInsets.symmetric(
+                                      horizontal: 6.w, vertical: 15.w),
+                                  padding: EdgeInsets.symmetric(
+                                      vertical: 5.w, horizontal: 10.w),
+                                  decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSecondary,
+                                      borderRadius:
+                                          BorderRadius.circular(30.w)),
+                                  child: Text(
+                                    e.first ?? '',
+                                    style: TextStyle(fontSize: 26.sp),
+                                  ),
+                                ),
+                                onTap: () {
+                                  _search.text = e.first ?? '';
+                                  searchContent = _search.text;
+                                  setState(() {});
+                                },
+                              ))
+                          .toList(),
                     ),
-                    onTap: () {
-                      _search.text = e.first ?? '';
-                      searchContent = _search.text;
-                      setState(() {});
-                    },
-                  ))
-                      .toList(),
-                ),
-              )),
+                  )),
           child: Column(
             children: [
               TabBar(
                 tabs: tabs,
                 controller: _tabController,
-                labelColor: Theme.of(context).primaryColor,
+                labelColor: BuYuStyle.action(Theme.of(context)),
                 unselectedLabelColor: Theme.of(context).iconTheme.color,
                 indicatorSize: TabBarIndicatorSize.label,
                 indicatorColor: Theme.of(context).primaryColor,
-                indicatorPadding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 0),
+                indicatorPadding:
+                    EdgeInsets.symmetric(horizontal: 15.w, vertical: 0),
               ),
               Expanded(
                   child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildSongSearchView(),
-                      _buildPlayListSearchView(),
-                      _buildAlbumSearchView(),
-                      _buildArtistsSearchView(),
-                    ],
-                  )),
+                controller: _tabController,
+                children: [
+                  _buildSongSearchView(),
+                  _buildPlayListSearchView(),
+                  _buildAlbumSearchView(),
+                  _buildArtistsSearchView(),
+                ],
+              )),
             ],
           )),
     ));
   }
 
-  Widget _buildSongSearchView() {
-    return RequestLoadMoreWidget<SearchSongWrapX, Song2>(
-      dioMetaData: searchSongDioMetaData(searchContent, 1),
-      childBuilder: (List<Song2> songs) {
-        var list = Home.to.song2ToMedia(songs);
-        return ListView.builder(
-          itemExtent: 120.w,
-          padding: EdgeInsets.symmetric(horizontal: 10.w),
-          itemBuilder: (context, index) => SongItem(
-            index: index,
-            mediaItem: list[index],
-            onTap: () {
-              Home.to.playByIndex(index, '', mediaItem: list);
-            },
-          ),
-          itemCount: list.length,
-        );
-      },
-      listKey: const ['result', 'songs'],
-    );
-  }
+  Widget _buildSongSearchView() => MixedSongSearchView(query: searchContent);
 
   Widget _buildPlayListSearchView() {
     return RequestLoadMoreWidget<SearchPlaylistWrapX, Play>(
@@ -200,7 +199,7 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
         return ListView.builder(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           itemExtent: 120.w,
-          itemBuilder: (context, index) => PlayListItem( play: playlist[index]),
+          itemBuilder: (context, index) => PlayListItem(play: playlist[index]),
           itemCount: playlist.length,
         );
       },
@@ -215,7 +214,8 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
         return ListView.builder(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           itemExtent: 120.w,
-          itemBuilder: (context, index) => AlbumItem(index: index, album: playlist[index]),
+          itemBuilder: (context, index) =>
+              AlbumItem(index: index, album: playlist[index]),
           itemCount: playlist.length,
         );
       },
@@ -230,7 +230,8 @@ class _SearchViewState extends State<SearchView> with SingleTickerProviderStateM
         return ListView.builder(
           itemExtent: 120.w,
           padding: EdgeInsets.symmetric(horizontal: 20.w),
-          itemBuilder: (context, index) => ArtistsItem(index: index, artists: playlist[index]),
+          itemBuilder: (context, index) =>
+              ArtistsItem(index: index, artists: playlist[index]),
           itemCount: playlist.length,
         );
       },

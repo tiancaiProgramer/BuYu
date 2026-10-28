@@ -1,9 +1,12 @@
+import '../music/music_accounts_view.dart';
+import '../downloads/downloads_view.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/common/appearance_store.dart';
 import 'package:bujuan/common/audio_quality.dart';
 import '../../common/audio_stream_info.dart';
 import '../../common/downloads.dart';
 import '../../widget/adaptive_option_sheet.dart';
+import '../../widget/adaptive_wallpaper.dart';
 import 'package:bujuan/common/constants/key.dart';
 import 'package:bujuan/common/display_mode.dart';
 import 'package:bujuan/common/github_updates.dart';
@@ -20,7 +23,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../routes/router.dart';
 import '../../routes/router.gr.dart' as app_routes;
-import '../user/user_controller.dart';
 import 'image_blur.dart';
 
 class SettingView extends StatefulWidget {
@@ -155,6 +157,7 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
   }
 
   Future<void> _update() async {
+    if (const bool.fromEnvironment('BUYU_COEXIST')) { message('共存测试版请使用测试安装包更新'); return; }
     if (checking) return;
     setState(() => checking = true);
     try {
@@ -325,8 +328,14 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
                 subtitle: Text(_pictureSummary(kind)),
                 trailing: Icon(TablerIcons.chevron_right, size: 42.w),
                 onTap: () => _pictures(kind)),
+          const _HideUnloggedSetting(),
         ]),
         _section('App设置', [
+          ListTile(title: Text('音乐账号与收藏', style: TextStyle(fontSize: 30.sp)),
+              subtitle: const Text('网易云 / QQ音乐 · 聚合收藏'),
+              trailing: Icon(TablerIcons.chevron_right, size: 42.w),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MusicAccountsView()))),
+          ListTile(key:const ValueKey('download-manager-setting'),title:Text('下载管理',style:TextStyle(fontSize:30.sp)),subtitle:const Text('下载记录、进度与实际音频信息'),trailing:Icon(TablerIcons.chevron_right,size:42.w),onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const DownloadsView()))),
           ListTile(
               key: const ValueKey('download-quality-setting'),
               title: Text('下载音质', style: TextStyle(fontSize: 30.sp)),
@@ -377,7 +386,14 @@ class _SettingViewState extends _SettingsState<SettingView> {
 
 class _SettingViewStateL extends _SettingsState<SettingViewL> {
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
+    ColoredBox(color: Theme.of(context).scaffoldBackgroundColor),
+    Obx(() => AdaptiveWallpaper(
+        portrait: Home.to.background.value,
+        landscape: Home.to.backgroundLandscape.value,
+        portraitBlur: Home.to.backgroundBlur.value,
+        landscapeBlur: Home.to.backgroundLandscapeBlur.value)),
+    Scaffold(
       backgroundColor: Colors.transparent,
       appBar: Home.to.landscape
           ? null
@@ -386,15 +402,16 @@ class _SettingViewStateL extends _SettingsState<SettingViewL> {
               centerTitle: false,
               leadingWidth: phoneLandscape(context) ? 68 : null,
               leading: IconButton(
+                  key: const ValueKey('settings-account-avatar'),
                   onPressed: () {
-                    if (Home.to.loginStatus.value == LoginStatus.login) {
+                    if (Home.to.hasMusicAccount) {
                       Home.to.myDrawerController.open!();
                     } else {
                       context.router.pushNamed(Routes.login);
                     }
                   },
                   icon: Obx(() => SimpleExtendedImage.avatar(
-                      Home.to.userData.value.profile?.avatarUrl ?? '',
+                      Home.to.displayAvatarUrl,
                       width: 80.w))),
               title: RichText(
                   text: TextSpan(
@@ -410,7 +427,8 @@ class _SettingViewStateL extends _SettingsState<SettingViewL> {
                             color:
                                 Theme.of(context).primaryColor.withOpacity(.9)))
                   ]))),
-      body: settingsBody());
+      body: settingsBody()),
+  ]);
 }
 
 class _LandscapeSetting extends StatelessWidget {
@@ -429,4 +447,25 @@ class _LandscapeSetting extends StatelessWidget {
               .withOpacity(Home.to.landscapeAdaptation.value ? .7 : .4))),
       onTap: () =>
           Home.to.setLandscapeAdaptation(!Home.to.landscapeAdaptation.value));
+}
+
+class _HideUnloggedSetting extends StatelessWidget {
+  const _HideUnloggedSetting();
+  @override
+  Widget build(BuildContext context) => ListTile(
+      key: const ValueKey('hide-unlogged-setting'),
+      title: Text('未登录隐藏', style: TextStyle(fontSize: 30.sp)),
+      subtitle: const Text('隐藏主页中未登录平台的入口和歌单，云盘与本地收藏始终显示'),
+      trailing: Obx(() => Icon(
+          Home.to.hideUnlogged.value ? TablerIcons.toggle_right : TablerIcons.toggle_left,
+          size: 56.w, color: Theme.of(context).cardColor.withOpacity(
+              Home.to.hideUnlogged.value ? .7 : .4))),
+      onTap: () async {
+        try {
+          await Home.to.setHideUnlogged(!Home.to.hideUnlogged.value);
+        } catch (_) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('设置保存失败，请重试')));
+        }
+      });
 }

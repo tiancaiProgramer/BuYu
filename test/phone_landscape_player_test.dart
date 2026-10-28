@@ -14,6 +14,24 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 void main() {
+  testWidgets('landscape collection changes repaint the heart without changing songs', (tester) async {
+    final model = fixture.playback();
+    addTearDown(model.dispose);
+    const song = MediaItem(id: 'qq:favorite', title: '收藏测试');
+    model.value = const WidePlaybackData(song: song);
+    await fixture.mount(tester, TvControls(playback: model, perform: (a) => a()), size: const Size(770, 300));
+    final button = find.byKey(const ValueKey('control:收藏'));
+    IconData icon() => tester.widget<Icon>(find.descendant(of: button, matching: find.byType(Icon))).icon!;
+    final initial = icon();
+    model.value = const WidePlaybackData(song: song, favorite: true);
+    await tester.pump();
+    expect(icon(), Icons.favorite);
+    expect(icon(), isNot(initial));
+    model.value = const WidePlaybackData(song: song, favorite: false);
+    await tester.pump();
+    expect(icon(), initial);
+    expect(tester.takeException(), isNull);
+  });
   test('artwork uses the alternate media URI and normalizes local file URIs',
       () {
     expect(

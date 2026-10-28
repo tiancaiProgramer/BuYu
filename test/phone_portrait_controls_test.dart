@@ -5,6 +5,7 @@ import 'package:bujuan/common/constants/colors.dart';
 import 'package:bujuan/common/constants/key.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/pages/home/view/home_view.dart';
+import 'package:bujuan/widget/weslide/panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,6 +46,31 @@ void main() {
     });
     home!.fm.value = true;
     home!.mediaItem.value = handler.mediaItem.value!;
+    home!.hasStartedPlayback.value = true;
+    for (final bottom in [0.0, 24.0]) {
+      tester.view.padding = FakeViewPadding(bottom: bottom);
+      tester.view.viewPadding = FakeViewPadding(bottom: bottom);
+      await tester.pump(const Duration(milliseconds: 400));
+      final bar =
+          tester.getRect(find.byKey(const ValueKey('portrait-mini-player')));
+      final title =
+          tester.getRect(find.byKey(const ValueKey('portrait-mini-title')));
+      final toggle =
+          tester.getRect(find.byKey(const ValueKey('portrait-mini-toggle')));
+      final panel = tester.widget<SlidingUpPanel>(find.byWidgetPredicate(
+          (w) => w is SlidingUpPanel && w.controller == home!.panelControllerHome));
+      expect(bar.height, lessThanOrEqualTo(64));
+      expect(bar.bottom, closeTo(844 - bottom, .01));
+      expect(panel.minHeight, closeTo(bar.height + bottom, .01));
+      expect(title.center.dy, closeTo(bar.center.dy, .01));
+      expect(toggle.center.dy, closeTo(bar.center.dy, .01));
+      expect(find.byKey(const ValueKey('portrait-mini-toggle')).hitTestable(),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+    tester.view.resetPadding();
+    tester.view.resetViewPadding();
+    await tester.pump();
     home!.panelControllerHome.open();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 800));

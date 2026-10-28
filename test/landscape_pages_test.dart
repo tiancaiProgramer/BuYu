@@ -10,6 +10,7 @@ import 'package:bujuan/common/display_mode.dart';
 import 'package:bujuan/common/netease_api/src/api/play/bean.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/pages/index/index_controller.dart';
+import 'package:bujuan/pages/user/user_controller.dart';
 import 'package:bujuan/pages/index/main_view.dart';
 import 'package:bujuan/pages/local/local_controller.dart';
 import 'package:bujuan/pages/local/local_view.dart';
@@ -54,6 +55,10 @@ class OfflineLocal extends Local {
 
   @override
   void onReady() {}
+}
+
+class OfflineUser extends UserController {
+  @override void onReady() {}
 }
 
 class OfflineManager extends PlaylistManager {
@@ -150,6 +155,7 @@ void main() {
             designSize: DisplayMode.designSize(tester.view.physicalSize),
             builder: (_, __) {
               home ??= Get.put<Home>(OfflineHome());
+              if (!Get.isRegistered<UserController>()) Get.put<UserController>(OfflineUser());
               return GetMaterialApp(
                   theme: capturePath.isEmpty
                       ? AppTheme.light
@@ -180,8 +186,9 @@ void main() {
       expect(tester.takeException(), isNull);
       final manager = Get.put<PlaylistManager>(OfflineManager());
       manager.playlist.addAll(List.generate(9, (i) => Play()..id = '$i'..name = '我的歌单 $i'..trackCount = 10));
+      UserController.to.playlist.addAll(manager.playlist);
       await mount(const PlaylistManagerView());
-      final managerCards = find.byType(LandscapeCard);
+      final managerCards = find.byType(LandscapeCardSurface);
       expect(tester.getRect(managerCards.at(0)).top, tester.getRect(managerCards.at(2)).top);
       expect(tester.getRect(managerCards.at(3)).top, greaterThan(tester.getRect(managerCards.at(0)).bottom));
       await capture('manager');

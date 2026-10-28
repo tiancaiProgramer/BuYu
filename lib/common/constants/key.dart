@@ -23,3 +23,5 @@ String unblockSp = 'UNBLOCK';
 String unblockVipSp = 'UNBLOCK_VIP';
 const landscapeAdaptationSp = 'LANDSCAPE_ADAPTATION';
 const audioQualitySp = 'AUDIO_QUALITY';
+
+const hideUnloggedSp = 'HOME_HIDE_UNLOGGED';

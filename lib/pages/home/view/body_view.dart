@@ -17,31 +17,29 @@ class BodyView extends GetView<Home> {
     final wide =
         MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
     controller.buildContext = context;
-    double bottomHeight =
-        MediaQuery.of(controller.buildContext).padding.bottom *
-            (PlatformUtils.isIOS ? 0.6 : .85);
-    if (bottomHeight == 0 && PlatformUtils.isAndroid || PlatformUtils.isIOS)
-      bottomHeight = 32.w;
+    final bottomHeight = MediaQuery.viewPaddingOf(context).bottom;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Home.to.landscape ? Colors.transparent : null,
       body: Stack(
         children: [
-          Positioned.fill(child: Obx(() => AdaptiveWallpaper(
-              portrait: controller.background.value,
-              landscape: controller.backgroundLandscape.value,
-              portraitBlur: controller.backgroundBlur.value,
-              landscapeBlur: controller.backgroundLandscapeBlur.value))),
+          Positioned.fill(
+              child: Obx(() => AdaptiveWallpaper(
+                  portrait: controller.background.value,
+                  landscape: controller.backgroundLandscape.value,
+                  portraitBlur: controller.backgroundBlur.value,
+                  landscapeBlur: controller.backgroundLandscapeBlur.value))),
           Obx(() {
-            final started = controller.hasStartedPlayback.value;
+            final started = controller.showPlaybackControls;
             return Padding(
               padding: EdgeInsets.only(
-                  bottom: wide
-                      ? (started ? 44 : 0) +
-                          MediaQuery.viewPaddingOf(context).bottom
-                      : controller.panelMobileMinSize +
-                          bottomHeight +
-                          controller.panelAlbumPadding * 2),
+                  bottom: !started
+                      ? MediaQuery.viewPaddingOf(context).bottom
+                      : wide
+                          ? 44 + MediaQuery.viewPaddingOf(context).bottom
+                          : controller.portraitMiniContentHeight +
+                              bottomHeight +
+                              controller.panelAlbumPadding * 2),
               child: SafeArea(
                   top: false,
                   bottom: false,

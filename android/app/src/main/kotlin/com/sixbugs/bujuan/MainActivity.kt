@@ -8,8 +8,15 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: AudioServiceActivity() {
     private var audioDownloads: AudioDownloads? = null
+    private var qqResult: MethodChannel.Result? = null
+    private var qqStore: QqSessionStore? = null
     private var webLoginResult: MethodChannel.Result? = null
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 7932) {
+            qqResult?.success(if (resultCode == RESULT_OK) data?.getStringExtra("cookies") else null)
+            qqResult = null
+            return
+        }
         if (requestCode == 7931) {
             webLoginResult?.success(if (resultCode == RESULT_OK) data?.getStringExtra("cookies") else null)
             webLoginResult = null
@@ -20,6 +27,24 @@ class MainActivity: AudioServiceActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val sessionStore = QqSessionStore(this)
+        qqStore = sessionStore
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "buyu/qqmusic").setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "readSession" -> result.success(sessionStore.read())
+                    "readWebSession" -> result.success(QqWebSession.read())
+                    "saveSession" -> { sessionStore.save(call.arguments as String); result.success(null) }
+                    "clearSession" -> { sessionStore.clear(); QqWebSession.clear { result.success(null) } }
+                    "login" -> if (qqResult != null) result.error("busy", "QQ登录页已打开", null) else {
+                        qqResult = result
+                        try { startActivityForResult(Intent(this,QqLoginActivity::class.java),7932) }
+                        catch (_: Exception) { qqResult = null; result.error("login", "无法打开QQ音乐官方登录页", null) }
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (_: Exception) { result.error("session", "QQ登录状态保存失败，请重试", null) }
+        }
         val downloads = AudioDownloads(this)
         audioDownloads = downloads
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bujuan/auth")

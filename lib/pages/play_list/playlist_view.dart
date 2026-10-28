@@ -1,3 +1,7 @@
+import '../../common/music/music_source.dart';
+import '../music/qq_comments_view.dart';
+import '../music/library_actions.dart';
+import '../../common/music/unified_library.dart';
 import '../../widget/landscape_cards.dart';
 import '../../widget/download_song_button.dart';
 import '../../widget/adaptive_option_sheet.dart';
@@ -159,9 +163,14 @@ class SongItem extends StatelessWidget {
     } else {
       sheet.add(const SheetAction<ActionType>(label: '查看歌曲评论', icon: TablerIcons.message_2, key: ActionType.talk));
     }
-    if (mediaItem.extras?['type'] != type.MediaType.local.name) {
+    if (!isLocalSong(mediaItem)) {
+      sheet.add(SheetAction<ActionType>(label: UnifiedLibrary.peekContains(mediaItem) ? '取消聚合收藏' : '聚合收藏', icon: TablerIcons.heart, key: ActionType.favorite));
+    }
+    if (!isLocalSong(mediaItem)) {
       sheet.add(const SheetAction<ActionType>(label: '下载歌曲', icon: TablerIcons.download, key: ActionType.download));
     }
+    if (!isLocalSong(mediaItem)) sheet.add(const SheetAction<ActionType>(label: '加入本地文件夹', icon: Icons.folder_outlined, key: ActionType.folder));
+    if (sourceOf(mediaItem) == MusicSource.qq) sheet.add(const SheetAction<ActionType>(label: '收藏到QQ歌单', icon: Icons.playlist_add, key: ActionType.cloud));
     return ListTile(
       visualDensity: VisualDensity.compact,
       leading: showArtwork
@@ -175,7 +184,7 @@ class SongItem extends StatelessWidget {
         maxLines: 1,
       ),
       subtitle: Text(
-        mediaItem.artist ?? '',
+        isLocalSong(mediaItem) ? mediaItem.artist ?? '' : sourceSubtitle(mediaItem),
         maxLines: 1,
       ),
       trailing: IconButton(
@@ -185,9 +194,24 @@ class SongItem extends StatelessWidget {
               title: mediaItem.title,
               message: mediaItem.artist,
               actions: sheet,
-            ).then((value) {
+            ).then((value) async {
               if (value != null) {
                 switch (value) {
+                  case ActionType.favorite:
+                    final library = UnifiedLibrary.instance;
+                    try {
+                      await library.setFavorite(mediaItem, !library.contains(mediaItem));
+                      WidgetUtil.showToast('聚合收藏已更新，登录后同步到对应平台');
+                    } catch (_) {
+                      WidgetUtil.showToast('聚合收藏保存失败，请检查存储空间后重试');
+                    }
+                    break;
+                  case ActionType.folder:
+                    if (context.mounted) await chooseLocalFolder(context, mediaItem);
+                    break;
+                  case ActionType.cloud:
+                    if (context.mounted) await chooseQqPlaylist(context, mediaItem);
+                    break;
                   case ActionType.download:
                     downloadSong(context, mediaItem);
                     break;
@@ -203,6 +227,10 @@ class SongItem extends StatelessWidget {
                     context.router.push(const gr.EditSongView().copyWith(args: mediaItem));
                     break;
                   case ActionType.talk:
+                    if (sourceOf(mediaItem) == MusicSource.qq) {
+                      if (context.mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => QqCommentsView(song: mediaItem)));
+                      break;
+                    }
                     context.router.push(const gr.TalkView().copyWith(queryParams: {'id': mediaItem.id, 'type': 'song', 'name': mediaItem.title}));
                     break;
                 }
@@ -245,9 +273,14 @@ class SongItemShowImage extends StatelessWidget {
     } else {
       sheet.add(const SheetAction<ActionType>(label: '查看歌曲评论', icon: TablerIcons.message_2, key: ActionType.talk));
     }
-    if (mediaItem.extras?['type'] != type.MediaType.local.name) {
+    if (!isLocalSong(mediaItem)) {
+      sheet.add(SheetAction<ActionType>(label: UnifiedLibrary.peekContains(mediaItem) ? '取消聚合收藏' : '聚合收藏', icon: TablerIcons.heart, key: ActionType.favorite));
+    }
+    if (!isLocalSong(mediaItem)) {
       sheet.add(const SheetAction<ActionType>(label: '下载歌曲', icon: TablerIcons.download, key: ActionType.download));
     }
+    if (!isLocalSong(mediaItem)) sheet.add(const SheetAction<ActionType>(label: '加入本地文件夹', icon: Icons.folder_outlined, key: ActionType.folder));
+    if (sourceOf(mediaItem) == MusicSource.qq) sheet.add(const SheetAction<ActionType>(label: '收藏到QQ歌单', icon: Icons.playlist_add, key: ActionType.cloud));
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 10.w),
       leading: SimpleExtendedImage.avatar(
@@ -263,7 +296,7 @@ class SongItemShowImage extends StatelessWidget {
         TextSpan(text: mediaItem.extras?['fee'] == 1 ? '   vip' : '', style: TextStyle(color: Theme.of(context).primaryColor.withOpacity(.9), fontSize: 26.sp)),
       ])),
       subtitle: Text(
-        mediaItem.artist ?? '',
+        isLocalSong(mediaItem) ? mediaItem.artist ?? '' : sourceSubtitle(mediaItem),
         maxLines: 1,
       ),
       trailing: IconButton(
@@ -273,9 +306,24 @@ class SongItemShowImage extends StatelessWidget {
               title: mediaItem.title,
               message: mediaItem.artist,
               actions: sheet,
-            ).then((value) {
+            ).then((value) async {
               if (value != null) {
                 switch (value) {
+                  case ActionType.favorite:
+                    final library = UnifiedLibrary.instance;
+                    try {
+                      await library.setFavorite(mediaItem, !library.contains(mediaItem));
+                      WidgetUtil.showToast('聚合收藏已更新，登录后同步到对应平台');
+                    } catch (_) {
+                      WidgetUtil.showToast('聚合收藏保存失败，请检查存储空间后重试');
+                    }
+                    break;
+                  case ActionType.folder:
+                    if (context.mounted) await chooseLocalFolder(context, mediaItem);
+                    break;
+                  case ActionType.cloud:
+                    if (context.mounted) await chooseQqPlaylist(context, mediaItem);
+                    break;
                   case ActionType.download:
                     downloadSong(context, mediaItem);
                     break;
@@ -291,6 +339,10 @@ class SongItemShowImage extends StatelessWidget {
                     context.router.push(const gr.EditSongView().copyWith(args: mediaItem));
                     break;
                   case ActionType.talk:
+                    if (sourceOf(mediaItem) == MusicSource.qq) {
+                      if (context.mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => QqCommentsView(song: mediaItem)));
+                      break;
+                    }
                     context.router.push(const gr.TalkView().copyWith(queryParams: {'id': mediaItem.id, 'type': 'song', 'name': mediaItem.title}));
                     break;
                 }
@@ -404,7 +456,7 @@ class ArtistsItem extends StatelessWidget {
   }
 }
 
-enum ActionType { next, edit, talk, download }
+enum ActionType { favorite, next, edit, talk, download, folder, cloud }
 
 Future<ActionType?> showSongActions({required BuildContext context, required String title,
     String? message, required List<SheetAction<ActionType>> actions}) =>

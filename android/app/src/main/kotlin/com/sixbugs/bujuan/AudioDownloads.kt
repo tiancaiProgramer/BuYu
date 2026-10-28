@@ -136,7 +136,7 @@ class AudioDownloads(private val activity: Activity) {
                         put(MediaStore.Audio.Media.ARTIST, call.argument<String>("artist"))
                         put(MediaStore.Audio.Media.ALBUM, call.argument<String>("album"))
                         put(MediaStore.Audio.Media.IS_MUSIC, 1)
-                        put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/BuJuan")
+                        put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/${if (activity.packageName.endsWith(".preview")) "BuYuPreview" else "BuJuan"}")
                         put(MediaStore.Audio.Media.IS_PENDING, 1)
                     }
                     uri = requireNotNull(resolver.insert(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values))
@@ -153,7 +153,7 @@ class AudioDownloads(private val activity: Activity) {
                     }
                 } else {
                     @Suppress("DEPRECATION")
-                    val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "BuJuan")
+                    val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), if (activity.packageName.endsWith(".preview")) "BuYuPreview" else "BuJuan")
                     check(directory.isDirectory || directory.mkdirs())
                     var target = File(directory, name)
                     if (target.exists()) target = File(directory, "${System.currentTimeMillis()}_$name")

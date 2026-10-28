@@ -1,3 +1,5 @@
+import '../../../common/music/music_source.dart';
+import '../../music/qq_artist_view.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -39,7 +41,12 @@ class RecommendView extends GetView<Home> {
   }
 
   @override
-  Widget build(BuildContext context) => Obx(() => PlayingArtistPanel(
-      song: controller.mediaItem.value, artistLoader: artistLoader, songsLoader: songsLoader,
-      onOpen: (artist) => _open(context, artist)));
+  Widget build(BuildContext context) =>
+      Obx(() => sourceOf(controller.mediaItem.value) == MusicSource.qq
+          ? QqArtistView(song: controller.mediaItem.value)
+          : PlayingArtistPanel(
+              song: controller.mediaItem.value,
+              artistLoader: artistLoader,
+              songsLoader: songsLoader,
+              onOpen: (artist) => _open(context, artist)));
 }

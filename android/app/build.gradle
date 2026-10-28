@@ -27,6 +27,11 @@ android {
     flavorDimensions "display"
     productFlavors {
         mobile { dimension "display" }
+        preview {
+            dimension "display"
+            applicationIdSuffix ".preview"
+            manifestPlaceholders = [appName: "BuYu 共存测试"]
+        }
         tv {
             dimension "display"
             applicationIdSuffix ".tv"

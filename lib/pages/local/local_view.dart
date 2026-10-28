@@ -15,7 +15,6 @@ import '../../widget/app_bar.dart';
 import '../../widget/landscape_cards.dart';
 import '../../widget/simple_extended_image.dart';
 import '../home/home_controller.dart';
-import '../user/user_controller.dart';
 import 'local_controller.dart';
 import '../downloads/downloads_view.dart';
 
@@ -31,15 +30,16 @@ class LocalView extends GetView<Local> {
         backgroundColor: Colors.transparent,
         leadingWidth: phoneLandscape(context) ? 68 : null,
         leading: IconButton(
+            key: const ValueKey('local-account-avatar'),
             onPressed: () {
-              if (Home.to.loginStatus.value == LoginStatus.login) {
+              if (Home.to.hasMusicAccount) {
                 Home.to.myDrawerController.open!();
                 return;
               }
               AutoRouter.of(context).pushNamed(Routes.login);
             },
             icon: Obx(() => SimpleExtendedImage.avatar(
-                  Home.to.userData.value.profile?.avatarUrl ?? '',
+                  Home.to.displayAvatarUrl,
                   width: 80.w,
                 ))),
         title: RichText(

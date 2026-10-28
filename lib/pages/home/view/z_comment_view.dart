@@ -1,3 +1,5 @@
+import '../../../common/music/music_source.dart';
+import '../../music/qq_comments_view.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/routes/router.gr.dart';
@@ -13,6 +15,12 @@ class CommentView extends GetView<Home> {
 
   @override
   Widget build(BuildContext context) {
+    return Obx(() => sourceOf(controller.mediaItem.value) == MusicSource.qq
+        ? QqCommentsView(song: controller.mediaItem.value, embedded: true, color: controller.bodyColor.value)
+        : _comments(context));
+  }
+
+  Widget _comments(BuildContext context) {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 20.w),
       child: Column(
@@ -24,27 +32,36 @@ class CommentView extends GetView<Home> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Obx(() => Text(
-                  '热评榜',
-                  style: TextStyle(color: controller.bodyColor.value, fontSize: 44.sp),
-                )),
+                      '热评榜',
+                      style: TextStyle(
+                          color: controller.bodyColor.value, fontSize: 44.sp),
+                    )),
                 TextButton(
                     onPressed: () {
-                      context.router.push(const TalkView().copyWith(queryParams: {'id': controller.mediaItem.value.id, 'type': 'song','name':controller.mediaItem.value.title}));
+                      context.router
+                          .push(const TalkView().copyWith(queryParams: {
+                        'id': controller.mediaItem.value.id,
+                        'type': 'song',
+                        'name': controller.mediaItem.value.title
+                      }));
                     },
                     child: Obx(() => Text(
-                      '查看更多>',
-                      style: TextStyle(color: controller.bodyColor.value, fontSize: 28.sp),
-                    )))
+                          '查看更多>',
+                          style: TextStyle(
+                              color: controller.bodyColor.value,
+                              fontSize: 28.sp),
+                        )))
               ],
             ),
           ),
           Obx(() => ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(0),
-            itemBuilder: (context1, index) => _buildItem(controller.comments[index], context),
-            itemCount: controller.comments.length,
-          )),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(0),
+                itemBuilder: (context1, index) =>
+                    _buildItem(controller.comments[index], context),
+                itemCount: controller.comments.length,
+              )),
         ],
       ),
     );
@@ -69,7 +86,8 @@ class CommentView extends GetView<Home> {
                   Expanded(
                       child: Text(
                     '${comment.user.nickname ?? ''}   (${comment.likedCount}赞)',
-                    style: TextStyle(color: controller.bodyColor.value, fontSize: 28.sp),
+                    style: TextStyle(
+                        color: controller.bodyColor.value, fontSize: 28.sp),
                   ))
                 ],
               ),
@@ -77,7 +95,8 @@ class CommentView extends GetView<Home> {
                 padding: EdgeInsets.only(top: 20.w, left: 80.w),
                 child: Text(
                   (comment.content ?? '').replaceAll('\n', ''),
-                  style: TextStyle(color: controller.bodyColor.value, fontSize: 24.sp),
+                  style: TextStyle(
+                      color: controller.bodyColor.value, fontSize: 24.sp),
                 ),
               ),
             ],
@@ -85,7 +104,11 @@ class CommentView extends GetView<Home> {
         }),
       ),
       onTap: () {
-          context.router.push(const TalkView().copyWith(queryParams: {'id': controller.mediaItem.value.id, 'type': 'song','name':controller.mediaItem.value.title}));
+        context.router.push(const TalkView().copyWith(queryParams: {
+          'id': controller.mediaItem.value.id,
+          'type': 'song',
+          'name': controller.mediaItem.value.title
+        }));
       },
     );
   }

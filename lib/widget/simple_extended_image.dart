@@ -109,6 +109,12 @@ class SimpleExtendedImageState extends State<SimpleExtendedImage> {
             width: widget.width,
             height: widget.height,
             fit: widget.fit??BoxFit.cover,
+            placeholder: (_, __) => Image.asset(widget.placeholder,
+                width: widget.width, height: widget.height,
+                fit: widget.fit ?? BoxFit.cover),
+            errorWidget: (_, __, ___) => Image.asset(widget.placeholder,
+                width: widget.width, height: widget.height,
+                fit: widget.fit ?? BoxFit.cover),
           ),
         ),
         child: ClipRRect(

@@ -13,7 +13,6 @@ import '../../widget/app_bar.dart';
 import '../../widget/landscape_cards.dart';
 import '../../widget/simple_extended_image.dart';
 import '../play_list/playlist_view.dart';
-import '../user/user_controller.dart';
 
 class MainView extends GetView<IndexController> {
   const MainView({Key? key}) : super(key: key);
@@ -30,15 +29,16 @@ class MainView extends GetView<IndexController> {
               centerTitle: false,
               leadingWidth: phoneLandscape(context) ? 68 : null,
               leading: IconButton(
+                  key: const ValueKey('discovery-account-avatar'),
                   onPressed: () {
-                    if (Home.to.loginStatus.value == LoginStatus.login) {
+                    if (Home.to.hasMusicAccount) {
                       Home.to.myDrawerController.open!();
                       return;
                     }
                     AutoRouter.of(context).pushNamed(Routes.login);
                   },
                   icon: Obx(() => SimpleExtendedImage.avatar(
-                        Home.to.userData.value.profile?.avatarUrl ?? '',
+                        Home.to.displayAvatarUrl,
                         width: 80.w,
                       ))),
               title: RichText(

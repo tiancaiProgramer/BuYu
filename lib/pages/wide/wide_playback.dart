@@ -17,6 +17,7 @@ class WidePlaybackData {
       this.position = Duration.zero,
       this.playing = false,
       this.loading = false,
+      this.favorite = false,
       this.repeat = AudioServiceRepeatMode.all,
       this.error});
   final MediaItem song;
@@ -25,6 +26,7 @@ class WidePlaybackData {
   final Duration position;
   final bool playing;
   final bool loading;
+  final bool favorite;
   final AudioServiceRepeatMode repeat;
   final String? error;
 }
@@ -89,6 +91,7 @@ class WidePlayback extends ValueNotifier<WidePlaybackData> {
           playing: state.playing,
           loading: state.processingState == AudioProcessingState.loading ||
               state.processingState == AudioProcessingState.buffering,
+          favorite: home.currentFavorite,
           repeat: home.audioServiceRepeatMode.value,
           error: state.errorMessage);
     }
@@ -101,6 +104,7 @@ class WidePlayback extends ValueNotifier<WidePlaybackData> {
       }),
       home.duration.listen((_) => update()),
       home.playing.listen((_) => update()),
+      home.favoriteSelected.listen((_) => update()),
       home.audioServiceRepeatMode.listen((_) => update()),
       (home.lyricsLineModels as RxList<LyricsLineModel>).listen((_) {
         lyrics = List.of(home.lyricsLineModels);

@@ -1,3 +1,6 @@
+import '../../common/music/music_source.dart';
+import '../../common/music/qq_music.dart';
+import '../../common/music/unified_library.dart';
 import '../../common/display_mode.dart';
 import 'package:on_audio_edit/on_audio_edit.dart';
 import 'dart:async';
@@ -18,6 +21,7 @@ import 'package:bujuan/pages/home/view/z_lyric_view.dart';
 import 'package:bujuan/pages/home/view/z_playlist_view.dart';
 import 'package:bujuan/pages/home/view/z_recommend_view.dart';
 import 'package:bujuan/pages/user/user_controller.dart';
+import '../../common/music/qq_discovery.dart';
 import 'package:bujuan/widget/weslide/panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,7 +36,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:slide_countdown/slide_countdown.dart';
 
 import '../../common/lyric_parser/lyrics_reader_model.dart';
-import '../../common/netease_api/src/api/bean.dart';
 import '../../common/bujuan_audio_handler.dart';
 import '../../routes/router.dart';
 import '../../widget/wheel_slider.dart';
@@ -47,6 +50,7 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   double panelMobileMinSize = 85.w; //折叠起来时播放栏的高度
   double panelTopSize = 110.w; //折叠起来时播放栏的高度
   double panelAlbumPadding = 15.w; //专辑图片左右上下的边距
+  double get portraitMiniContentHeight => max(48.0, panelMobileMinSize);
 
   //是否是横屏
   // Phone routes retain the original widgets when the display rotates.
@@ -97,15 +101,52 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   //当前播放歌曲
   Rx<MediaItem> mediaItem = const MediaItem(id: '', title: '暂无', duration: Duration(seconds: 10)).obs;
+  // MediaItem equality compares song IDs, so extras-only updates need their own observable.
+  final RxBool favoriteSelected = false.obs;
 
   //当前播放列表
   RxList<MediaItem> mediaItems = <MediaItem>[].obs;
 
   //是否播放中
   RxBool playing = false.obs;
+  bool get hasMusicAccount =>
+      loginStatus.value == LoginStatus.login || QqMusic.instance.loggedIn;
+  static const profileSourceKey = 'HOME_PROFILE_SOURCE';
+  final profileSourcePreference = Rx<MusicSource?>(null);
+  final _qqProfileChanges = 0.obs;
+  QqMusic? _profileQq;
+  void _qqProfileChanged() => _qqProfileChanges.value++;
+
+  MusicSource? get displayProfileSource {
+    _qqProfileChanges.value;
+    final netease = loginStatus.value == LoginStatus.login;
+    final qq = QqMusic.instance.loggedIn;
+    final preferred = profileSourcePreference.value;
+    if (preferred == MusicSource.qq && qq) return MusicSource.qq;
+    if (preferred == MusicSource.netease && netease) return MusicSource.netease;
+    return netease ? MusicSource.netease : qq ? MusicSource.qq : null;
+  }
+
+  String get displayAvatarUrl => switch (displayProfileSource) {
+    MusicSource.netease => userData.value.profile?.avatarUrl ?? '',
+    MusicSource.qq => QqMusic.instance.avatarUrl,
+    null => '',
+  };
+  String get displayNickname => switch (displayProfileSource) {
+    MusicSource.netease => userData.value.profile?.nickname ?? '网易云用户',
+    MusicSource.qq => QqMusic.instance.nickname.isEmpty ? 'QQ音乐用户' : QqMusic.instance.nickname,
+    null => '请登录',
+  };
+  Future<void> setDisplayProfileSource(MusicSource source) async {
+    if (source == MusicSource.qq ? !QqMusic.instance.loggedIn : loginStatus.value != LoginStatus.login) return;
+    await box.put(profileSourceKey, source.name);
+    profileSourcePreference.value = source;
+  }
 
   // Restored queues do not occupy landscape space until playback starts.
   RxBool hasStartedPlayback = false.obs;
+  bool get showPlaybackControls =>
+      mediaItem.value.id.trim().isNotEmpty && hasStartedPlayback.value;
   RxBool landscapeAdaptation = true.obs;
 
   RxBool fm = false.obs;
@@ -225,6 +266,12 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   //用户信息
   RxList<int> likeIds = <int>[].obs;
+  final hideUnlogged = false.obs;
+  Future<void> setHideUnlogged(bool enabled) async {
+    await box.put(hideUnloggedSp, enabled);
+    hideUnlogged.value = enabled;
+  }
+
   Rx<LoginStatus> loginStatus = LoginStatus.noLogin.obs;
   Rx<NeteaseAccountInfoWrap> userData = NeteaseAccountInfoWrap().obs;
 
@@ -246,6 +293,11 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     }
     box.get(noFirstOpen, defaultValue: false);
     refreshBackground();
+    profileSourcePreference.value = MusicSource.values.firstWhereOrNull(
+        (s) => s.name == box.get(profileSourceKey));
+    _profileQq = QqMusic.instance;
+    _profileQq!.addListener(_qqProfileChanged);
+    hideUnlogged.value = box.get(hideUnloggedSp, defaultValue: false) == true;
     cache.value = box.get(cacheSp, defaultValue: false);
     gradientBackground.value = box.get(gradientBackgroundSp, defaultValue: true);
     topLyric.value = box.get(topLyricSp, defaultValue: false);
@@ -255,6 +307,7 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     landscapeAdaptation.value = box.get(landscapeAdaptationSp, defaultValue: true);
     String repeatMode = box.get(repeatModeSp, defaultValue: 'all');
     audioServiceRepeatMode.value = AudioServiceRepeatMode.values.firstWhereOrNull((element) => element.name == repeatMode) ?? AudioServiceRepeatMode.all;
+    UnifiedLibrary.instance.addListener(_favoritesChanged);
     // audioServeHandler.setRepeatMode(audioServiceRepeatMode.value);
     super.onInit();
   }
@@ -285,6 +338,14 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   _initHomeData() {
     autoRouterDelegate = AutoRouterDelegate.of(buildContext);
 
+    audioServeHandler.queue.listen((items) {
+      if (items.isNotEmpty && fm.value) {
+        final source = sourceOf(items.last);
+        audioServeHandler.restoreRadioLoader(source.label, boundRadioLoader(source,
+            '${items.last.extras?['radioAccount'] ?? (source==MusicSource.qq?QqMusic.instance.account:userData.value.profile?.userId ?? '')}'));
+      }
+    });
+
     //监听路由变化
     autoRouterDelegate?.addListener(listenRouter);
 
@@ -296,22 +357,27 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
       ..clear()
       ..addAll(value));
     audioServeHandler.mediaItem.listen((value) async {
-      if (value == null) {
+      if (value == null || value.id.trim().isEmpty) {
+        favoriteSelected.value = false;
         hasStartedPlayback.value = false;
         lyricsLineModels.clear();
         duration.value = Duration.zero;
         currLyric.value = '';
         mediaItem.value = const MediaItem(id: '', title: '暂无');
+        if (panelControllerHome.isAttached) panelControllerHome.close();
+        changeSlidePosition(0);
         return;
       }
       final changed = value.id != mediaItem.value.id;
-      mediaItem.value = value;
+      favoriteSelected.value = UnifiedLibrary.instance.contains(value);
+      mediaItem.value = value.copyWith(extras: {...?value.extras, 'liked': UnifiedLibrary.instance.contains(value)});
       if (!changed) return;
       lyricsLineModels.clear();
+      comments.clear();
       duration.value = Duration.zero;
       currLyric.value = '';
       if (!DisplayMode.isTv) _getAlbumColor();
-      _getLyric();
+      _getLyric().catchError((_) { if (mediaItem.value.id == value.id) currLyric.value = '暂无歌词'; });
       _setPlayListOffset();
       if (!DisplayMode.isTv && value.extras?['type'] == MediaType.playlist.name) {
         _getSongTalk();
@@ -349,6 +415,16 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
 
   jumpLyric({bool animate = true}) {}
 
+  void _favoritesChanged() {
+    final song = mediaItem.value;
+    if (song.id.isEmpty) return;
+    final selected = UnifiedLibrary.instance.contains(song);
+    favoriteSelected.value = selected;
+    if (audioServeHandler.mediaItem.value?.id == song.id && audioServeHandler.mediaItem.value?.extras?['liked'] != selected) {
+      audioServeHandler.updateMediaItem(song.copyWith(extras: {...?song.extras, 'liked': selected}));
+    }
+  }
+
   //获取歌词
   _getLyric() async {
     //获取歌词
@@ -368,9 +444,14 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     String lyric = box.get('lyric_${songId}') ?? '';
     String lyricTran = box.get('lyricTran_${songId}') ?? '';
     if (lyric.isEmpty) {
-      SongLyricWrap songLyricWrap = await NeteaseMusicApi().songLyric(songId);
-      lyric = songLyricWrap.lrc.lyric ?? "";
-      lyricTran = songLyricWrap.tlyric.lyric ?? "";
+      if (sourceOf(song) == MusicSource.qq) {
+        final result = await QqMusic.instance.lyrics(song);
+        lyric = result.$1; lyricTran = result.$2;
+      } else {
+        SongLyricWrap songLyricWrap = await NeteaseMusicApi().songLyric(songId);
+        lyric = songLyricWrap.lrc.lyric ?? '';
+        lyricTran = songLyricWrap.tlyric.lyric ?? '';
+      }
       box.put('lyric_${songId}', lyric);
       box.put('lyricTran_${songId}', lyricTran);
     }
@@ -525,24 +606,24 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   }
 
   //喜欢歌曲
+  bool get currentFavorite => favoriteSelected.value;
+
   likeSong({bool? liked}) async {
     final song = mediaItem.value;
-    final songId = int.tryParse(song.id);
-    if (songId == null) return;
-    bool isLiked = likeIds.contains(songId);
-    if (liked != null) {
-      isLiked = liked;
+    if (isLocalSong(song) || song.id.isEmpty) return;
+    final library = UnifiedLibrary.instance;
+    final selected = !(liked ?? library.contains(song));
+    try {
+      await library.setFavorite(song, selected);
+    } catch (_) {
+      WidgetUtil.showToast('聚合收藏保存失败，请检查存储空间后重试');
+      return;
     }
-    ServerStatusBean serverStatusBean = await NeteaseMusicApi().likeSong(song.id, !isLiked);
-    if (serverStatusBean.code == 200) {
-      await audioServeHandler.updateMediaItem(song.copyWith(extras: {...?song.extras, 'liked': !isLiked}));
-      WidgetUtil.showToast(isLiked ? '取消喜欢成功' : '喜欢成功');
-      if (isLiked) {
-        likeIds.remove(songId);
-      } else {
-        likeIds.add(songId);
-      }
+    if (mediaItem.value.id == song.id) {
+      favoriteSelected.value = selected;
+      await audioServeHandler.updateMediaItem(song.copyWith(extras: {...?song.extras, 'liked': selected}));
     }
+    WidgetUtil.showToast(selected ? '已加入聚合收藏' : '已取消聚合收藏');
   }
 
   //改变panel位置
@@ -592,11 +673,11 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   //当按下返回键
   Future<bool> onWillPop() async {
     if (!landscape) {
-      if (!DisplayMode.isWide && panelController.isAttached && panelController.isPanelOpen) {
+      if (showPlaybackControls && !DisplayMode.isWide && panelController.isAttached && panelController.isPanelOpen) {
         panelController.close();
         return false;
       }
-      if (panelControllerHome.isAttached && panelControllerHome.isPanelOpen) {
+      if (showPlaybackControls && panelControllerHome.isAttached && panelControllerHome.isPanelOpen) {
         panelControllerHome.close();
         return false;
       }
@@ -622,7 +703,30 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
     await audioServeHandler.changeQueueLists(mediaItem ?? [], index: index);
   }
 
-  getFmSongList() async {
+  Future<void> getFmSongList() => startSourceRadio(MusicSource.netease);
+
+  Future<void> startSourceRadio(MusicSource source) async {
+    final bound = source == MusicSource.qq ? QqMusic.instance.account : userData.value.profile?.userId ?? '';
+    final started = await audioServeHandler.startRadio(source.label, boundRadioLoader(source,bound));
+    if (!started) return;
+    audioServiceRepeatMode.value = AudioServiceRepeatMode.all;
+    await box.put(repeatModeSp,AudioServiceRepeatMode.all.name);
+  }
+
+  Future<List<MediaItem>> Function(List<MediaItem>) boundRadioLoader(MusicSource source, String bound) => (recent) async {
+    final current = source == MusicSource.qq ? QqMusic.instance.account : userData.value.profile?.userId ?? '';
+    if(bound.isEmpty || current != bound) throw const MusicServiceError('电台账号已切换，请重新打开FM');
+    final tracks = await radioSongs(source,recent);
+    return tracks.map((song)=>song.copyWith(extras:{...?song.extras,'radioAccount':bound})).toList();
+  };
+
+  Future<List<MediaItem>> radioSongs(MusicSource source, List<MediaItem> recent) async {
+    if(source == MusicSource.qq) {
+      return QqDiscovery(QqMusic.instance).radioSongs(recentIds:recent
+        .map((s)=>'${s.extras?['qqId'] ?? ''}').where((id)=>id.isNotEmpty).toSet());
+    }
+    if(loginStatus.value != LoginStatus.login) throw const MusicServiceError('请先登录网易云音乐');
+    final account = userData.value.profile?.userId;
     SongListWrap2 songListWrap2 = await NeteaseMusicApi().userRadio();
     if (songListWrap2.code == 200) {
       List<Song> songs = songListWrap2.data ?? [];
@@ -642,8 +746,12 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
               album: e.album?.name ?? '',
               artist: (e.artists ?? []).map((e) => e.name).toList().join(' / ')))
           .toList();
-      audioServeHandler.addFmItems(medias, false);
+      if(loginStatus.value != LoginStatus.login || userData.value.profile?.userId != account) {
+        throw const MusicServiceError('网易云账号已切换，请重新打开FM');
+      }
+      return medias;
     }
+    throw const MusicServiceError('网易云暂未返回电台歌曲，请重试');
   }
 
   //获取图片亮色背景下文字显示的颜色
@@ -659,7 +767,9 @@ class Home extends SuperController with GetSingleTickerProviderStateMixin {
   @override
   void onClose() {
     super.onClose();
+    _profileQq?.removeListener(_qqProfileChanged);
     // panelControllerHome.d();
+    if (GetIt.I.isRegistered<UnifiedLibrary>()) UnifiedLibrary.instance.removeListener(_favoritesChanged);
     lyricScrollController.dispose();
     autoRouterDelegate?.removeListener(listenRouter);
   }

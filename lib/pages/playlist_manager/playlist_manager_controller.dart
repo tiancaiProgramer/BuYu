@@ -15,6 +15,7 @@ class PlaylistManager extends GetxController {
 
   @override
   void onReady() {
+    if (Home.to.userData.value.profile == null) { super.onReady(); return; }
     NeteaseMusicApi().userPlayList(Home.to.userData.value.profile?.userId ?? '-1').then((MultiPlayListWrap2 multiPlayListWrap2) async {
       List<Play> list = (multiPlayListWrap2.playlist ?? []);
       if (list.isNotEmpty) {

@@ -1,4 +1,6 @@
 import 'package:audio_service/audio_service.dart';
+import '../music/discovery_sources.dart';
+import '../music/qq_discovery_views.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/widget/app_bar.dart';
 import 'package:bujuan/widget/my_get_view.dart';
@@ -34,19 +36,23 @@ class _TodayViewState extends State<TodayView> {
         title: const Text('每日'),
         backgroundColor: Colors.transparent,
       ),
-      body: RequestWidget<RecommendSongListWrapX>(
-          dioMetaData: recommendSongListDioMetaData(),
-          childBuilder: (playlist) {
-            _mediaItem
-              ..clear()
-              ..addAll(Home.to.song2ToMedia((playlist.data.dailySongs ?? [])));
-            return buildSongCollection(context,
-                songs: _mediaItem,
-                showArtwork: true,
-                storageId: 'daily',
-                onPlay: (index) => Home.to
-                    .playByIndex(index, 'queueTitle', mediaItem: _mediaItem));
-          }),
+      body: DiscoverySources(
+          id: 'daily',
+          qq: (_) => const QqDailyView(),
+          netease: (_) => RequestWidget<RecommendSongListWrapX>(
+              dioMetaData: recommendSongListDioMetaData(),
+              childBuilder: (playlist) {
+                _mediaItem
+                  ..clear()
+                  ..addAll(
+                      Home.to.song2ToMedia((playlist.data.dailySongs ?? [])));
+                return buildSongCollection(context,
+                    songs: _mediaItem,
+                    showArtwork: true,
+                    storageId: 'daily',
+                    onPlay: (index) => Home.to.playByIndex(index, 'queueTitle',
+                        mediaItem: _mediaItem));
+              })),
     ));
   }
 

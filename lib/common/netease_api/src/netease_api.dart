@@ -131,6 +131,8 @@ class NeteaseMusicApi
 }
 
 class UserLoginStateController {
+  int _sessionRevision = 0;
+  int get sessionRevision => _sessionRevision;
   LoginState? _curLoginState;
 
   StreamController? _controller;
@@ -180,8 +182,9 @@ class UserLoginStateController {
     });
   }
 
-  Future<void> onLogined(NeteaseAccountInfoWrap infoWrap) async {
+  Future<void> onLogined(NeteaseAccountInfoWrap infoWrap, {int? expectedRevision}) async {
     await init();
+    if (expectedRevision != null && expectedRevision != _sessionRevision) return;
     // Failed credentials and anonymous account responses are not a login.
     if (infoWrap.code != RET_CODE_OK || infoWrap.profile == null ||
         infoWrap.profile!.userId.isEmpty) return;
@@ -195,6 +198,7 @@ class UserLoginStateController {
   }
 
   Future<void> onLogout() async {
+    ++_sessionRevision;
     await deleteAllCookie();
     _accountInfo = null;
     await _saveAccountInfo(null);

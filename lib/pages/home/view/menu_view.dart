@@ -1,3 +1,4 @@
+import '../../../common/music/qq_music.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/pages/user/user_controller.dart';
@@ -7,9 +8,32 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
 import '../../../widget/simple_extended_image.dart';
+import '../drawer_navigation.dart';
+import '../../music/music_accounts_view.dart';
+import '../../../common/music/music_source.dart';
 
-class MenuView extends GetView<Home> {
+class MenuView extends StatefulWidget {
   const MenuView({super.key});
+
+  @override
+  State<MenuView> createState() => _MenuViewState();
+}
+
+class _MenuViewState extends State<MenuView> {
+  Home get controller => Home.to;
+  bool navigating = false;
+
+  Future<void> navigate(VoidCallback action) async {
+    if (navigating) return;
+    navigating = true;
+    try {
+      final ready = controller.landscape ||
+          await closeDrawerForNavigation(controller.myDrawerController);
+      if (mounted && ready) action();
+    } finally {
+      navigating = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +43,7 @@ class MenuView extends GetView<Home> {
           key: ValueKey('menu-action:$index'),
           constraints: fill ? const BoxConstraints.expand() : null,
           tooltip: controller.leftMenus[index].title,
-          onPressed: () {
-            if (!Home.to.landscape) controller.myDrawerController.close!();
-            Future.delayed(const Duration(milliseconds: 200), () {
+          onPressed: () => navigate(() {
               if (controller.leftMenus[index].path.isEmpty) {
                 Home.to.sleep(context);
                 return;
@@ -31,8 +53,7 @@ class MenuView extends GetView<Home> {
                 return;
               }
               context.router.replaceNamed(controller.leftMenus[index].path);
-            });
-          },
+            }),
           icon: Obx(() => Icon(controller.leftMenus[index].icon,
               size: 52.sp,
               color: controller.currPathUrl.value ==
@@ -51,19 +72,21 @@ class MenuView extends GetView<Home> {
             GestureDetector(
               key: const ValueKey('menu-avatar'),
               child: Obx(() => SimpleExtendedImage.avatar(
-                    '${controller.userData.value.profile?.avatarUrl ?? ''}?param=300y300',
+                    controller.displayAvatarUrl,
                     width: 90.w,
                   )),
-              onTap: () {
-                if (controller.loginStatus.value == LoginStatus.noLogin) {
+              onTap: () => navigate(() {
+                if (!controller.hasMusicAccount) {
                   context.router.pushNamed(Routes.login);
                   return;
                 }
-                if (!Home.to.landscape) controller.myDrawerController.close!();
-                Future.delayed(const Duration(milliseconds: 200), () {
+                if (controller.displayProfileSource == MusicSource.qq) {
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MusicAccountsView()));
+                } else {
                   context.router.pushNamed(Routes.userSetting);
-                });
-              },
+                }
+              }),
             ),
             if (wide) const SizedBox(height: 24),
             Expanded(
@@ -123,7 +146,7 @@ class MenuViewL extends GetView<Home> {
                     width: 90.w,
                   )),
               onTap: () {
-                if (controller.loginStatus.value == LoginStatus.noLogin) {
+                if (controller.loginStatus.value == LoginStatus.noLogin && !QqMusic.instance.loggedIn) {
                   context.router.pushNamed(Routes.login);
                   return;
                 }

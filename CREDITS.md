@@ -25,3 +25,9 @@
 原项目 README 同时致谢 [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi)、[UnblockNeteaseMusic/server-rust](https://github.com/UnblockNeteaseMusic/server-rust) 和 [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge)。上游原文保留于 [UPSTREAM_README.md](UPSTREAM_README.md)；此处记录来源，不声明本 Android 修复包启用了所有上游历史功能。
 
 其余 Flutter / Android 依赖遵循各自许可证，Flutter 依赖许可通知随安装包提供。
+
+## 双音源连接研究
+
+新增 QQ音乐适配由本维护分支编写，协议研究参考了 [jsososo/QQMusicApi](https://github.com/jsososo/QQMusicApi) 与 [L-1124/QQMusicApi](https://github.com/L-1124/QQMusicApi) 的接口说明和实现行为。这两个参考项目使用 GPL-3.0，未将其源码、模块或服务端打包进本应用；本应用没有内置或依赖公共代理服务。QQ音乐名称、页面及音乐内容归对应权利方，接口可用性和账号权限由平台决定。
+
+云端歌单协议字段另参考 [Yyyangshenghao/simple-music 的 QQ音乐 API 文档](https://github.com/Yyyangshenghao/simple-music/blob/master/docs/qq-music-api.md)；用于核对接口事实，未复制或打包其源码。

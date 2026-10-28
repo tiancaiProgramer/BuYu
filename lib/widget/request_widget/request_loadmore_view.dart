@@ -23,6 +23,9 @@ class RequestLoadMoreWidget<E, T> extends StatefulWidget {
   final List<String> listKey;
   final String? lastField;
 
+  /// Opt in only on pages that can resolve an expired account by signing in.
+  final WidgetBuilder? authenticationRequiredBuilder;
+
   const RequestLoadMoreWidget({
     Key? key,
     required this.dioMetaData,
@@ -35,16 +38,20 @@ class RequestLoadMoreWidget<E, T> extends StatefulWidget {
     this.isPageNmu = false,
     this.pageSize = 30,
     this.lastField,
+    this.authenticationRequiredBuilder,
   }) : super(key: key);
 
   @override
-  State<RequestLoadMoreWidget> createState() => RequestLoadMoreWidgetState<E, T>();
+  State<RequestLoadMoreWidget> createState() =>
+      RequestLoadMoreWidgetState<E, T>();
 }
 
-class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>> with RefreshState {
+class RequestLoadMoreWidgetState<E, T>
+    extends State<RequestLoadMoreWidget<E, T>> with RefreshState {
   bool _loading = true;
   bool _error = false;
   bool _empty = false;
+  bool _authenticationRequired = false;
   DioMetaData? dioMetaData;
   List<T> list = [];
   final RefreshController _refreshController = RefreshController();
@@ -76,6 +83,10 @@ class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>
 
   @override
   Widget build(BuildContext context) {
+    if (_authenticationRequired &&
+        widget.authenticationRequiredBuilder != null) {
+      return widget.authenticationRequiredBuilder!(context);
+    }
     return _loading
         ? const LoadingView()
         : _empty
@@ -83,67 +94,75 @@ class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>
             : _error
                 ? const ErrorView()
                 : SmartRefresher(
-      physics: const BouncingScrollPhysics(),
-      enablePullUp: widget.enableLoad,
-      scrollController: widget.scrollController,
-      header: WaterDropHeader(
-        waterDropColor: Theme.of(context).colorScheme.onSecondary,
-        refresh: CupertinoActivityIndicator(
-          color: Theme.of(context).iconTheme.color,
-        ),
-        complete: RichText(
-            text: TextSpan(children: [
-              const WidgetSpan(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 16),
-                    child: Icon(TablerIcons.mood_unamused),
-                  )),
-              TextSpan(text: '呼～  搞定', style: TextStyle(color: Theme.of(context).iconTheme.color))
-            ])),
-        idleIcon: Icon(
-          TablerIcons.refresh,
-          size: 15,
-          color: Theme.of(context).cardColor,
-        ),
-      ),
-      controller: _refreshController,
-      onRefresh: () async {
-        noMore = false;
-        _refreshController.resetNoData();
-        pageNum = widget.isPageNmu ? 1 : 0;
-        if (widget.isPageNmu) {
-          dioMetaData?.data['pageNo'] = pageNum;
-        }
-        if ((widget.lastField ?? '').isNotEmpty) {
-          dioMetaData?.data[widget.lastField] = 0;
-        }
-        if (dioMetaData?.data['offset'] != null) {
-          dioMetaData?.data['offset'] = pageNum;
-        }
-        callRefresh();
-      },
-      onLoading: () async {
-        if (noMore) return;
-        pageNum++;
-        if (widget.isPageNmu) {
-          dioMetaData?.data['pageNo'] = pageNum;
-        }
-        if ((widget.lastField ?? '').isNotEmpty) {
-          dioMetaData?.data[widget.lastField] = map![widget.lastField];
-        }
-        if (dioMetaData?.data['offset'] != null) {
-          dioMetaData?.data['offset'] = pageNum * widget.pageSize;
-        }
-        callRefresh();
-      },
-      child: widget.childBuilder(list),
-    );
+                    physics: const BouncingScrollPhysics(),
+                    enablePullUp: widget.enableLoad,
+                    scrollController: widget.scrollController,
+                    header: WaterDropHeader(
+                      waterDropColor: Theme.of(context).colorScheme.onSecondary,
+                      refresh: CupertinoActivityIndicator(
+                        color: Theme.of(context).iconTheme.color,
+                      ),
+                      complete: RichText(
+                          text: TextSpan(children: [
+                        const WidgetSpan(
+                            child: Padding(
+                          padding: EdgeInsets.only(right: 16),
+                          child: Icon(TablerIcons.mood_unamused),
+                        )),
+                        TextSpan(
+                            text: '呼～  搞定',
+                            style: TextStyle(
+                                color: Theme.of(context).iconTheme.color))
+                      ])),
+                      idleIcon: Icon(
+                        TablerIcons.refresh,
+                        size: 15,
+                        color: Theme.of(context).cardColor,
+                      ),
+                    ),
+                    controller: _refreshController,
+                    onRefresh: () async {
+                      noMore = false;
+                      _refreshController.resetNoData();
+                      pageNum = widget.isPageNmu ? 1 : 0;
+                      if (widget.isPageNmu) {
+                        dioMetaData?.data['pageNo'] = pageNum;
+                      }
+                      if ((widget.lastField ?? '').isNotEmpty) {
+                        dioMetaData?.data[widget.lastField] = 0;
+                      }
+                      if (dioMetaData?.data['offset'] != null) {
+                        dioMetaData?.data['offset'] = pageNum;
+                      }
+                      callRefresh();
+                    },
+                    onLoading: () async {
+                      if (noMore) return;
+                      pageNum++;
+                      if (widget.isPageNmu) {
+                        dioMetaData?.data['pageNo'] = pageNum;
+                      }
+                      if ((widget.lastField ?? '').isNotEmpty) {
+                        dioMetaData?.data[widget.lastField] =
+                            map![widget.lastField];
+                      }
+                      if (dioMetaData?.data['offset'] != null) {
+                        dioMetaData?.data['offset'] = pageNum * widget.pageSize;
+                      }
+                      callRefresh();
+                    },
+                    child: widget.childBuilder(list),
+                  );
   }
 
   @override
   callRefresh() {
-    Https.dioProxy.postUri(dioMetaData!, cancelToken: cancelToken).then((Response value) {
+    if (!mounted || cancelToken.isCancelled) return;
+    Https.dioProxy.postUri(dioMetaData!, cancelToken: cancelToken).then(
+        (Response value) {
+      if (!mounted || cancelToken.isCancelled) return;
       int code = value.data['code'];
+      if (_showAuthenticationRequired(code)) return;
       if (widget.listKey.length == 2) {
         map = value.data[widget.listKey.first];
       }
@@ -161,7 +180,8 @@ class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>
         if (pageNum == (widget.isPageNmu ? 1 : 0)) list.clear();
         var listData = (mapData as List);
         setState(() {
-          list.addAll(listData.map((e) => JsonConvert.fromJsonAsT<T>(e) as T).toList());
+          list.addAll(
+              listData.map((e) => JsonConvert.fromJsonAsT<T>(e) as T).toList());
           _empty = list.isEmpty;
         });
         if (pageNum == (widget.isPageNmu ? 1 : 0)) {
@@ -178,7 +198,14 @@ class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>
         setState(() {});
       }
     }, onError: (e) {
-      if (mounted) {
+      if (mounted && !cancelToken.isCancelled) {
+        if (e is DioException &&
+            (_showAuthenticationRequired(e.response?.statusCode) ||
+                _showAuthenticationRequired(e.response?.data is Map
+                    ? e.response?.data['code']
+                    : null))) {
+          return;
+        }
         setState(() {
           _loading = false;
           _error = true;
@@ -187,10 +214,22 @@ class RequestLoadMoreWidgetState<E, T> extends State<RequestLoadMoreWidget<E, T>
     });
   }
 
+  bool _showAuthenticationRequired(Object? code) {
+    if (widget.authenticationRequiredBuilder == null ||
+        (code != 301 && code != 401)) return false;
+    setState(() {
+      _loading = false;
+      _authenticationRequired = true;
+      list.clear();
+    });
+    return true;
+  }
+
   @override
   setParams(DioMetaData params) {
     setState(() {
       _loading = true;
+      _authenticationRequired = false;
       _error = false;
       _empty = false;
     });

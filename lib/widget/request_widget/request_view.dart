@@ -1,4 +1,3 @@
-import 'package:bujuan/common/constants/other.dart';
 import 'package:bujuan/common/netease_api/src/api/bean.dart';
 import 'package:bujuan/generated/json/base/json_convert_content.dart';
 import 'package:bujuan/widget/data_widget.dart';
@@ -29,6 +28,8 @@ class RequestWidgetState<T> extends State<RequestWidget<T>> with RefreshState {
   bool _loading = true;
   bool _error = false;
   DioMetaData? dioMetaData;
+  CancelToken? _cancelToken;
+  int _request = 0;
 
   @override
   initState() {
@@ -52,8 +53,21 @@ class RequestWidgetState<T> extends State<RequestWidget<T>> with RefreshState {
   }
 
   @override
+  void dispose() {
+    ++_request;
+    _cancelToken?.cancel();
+    widget.refreshController?.dispose();
+    super.dispose();
+  }
+
+  @override
   callRefresh() {
-    Https.dioProxy.postUri(dioMetaData!).then((Response value) {
+    if (!mounted) return;
+    final request = ++_request;
+    _cancelToken?.cancel();
+    final cancel = _cancelToken = CancelToken();
+    Https.dioProxy.postUri(dioMetaData!, cancelToken: cancel).then((Response value) {
+      if (!mounted || cancel.isCancelled || request != _request) return;
       int code = 0;
       if (JsonConvert.fromJsonAsT<T>(value.data) is ServerStatusBean) {
         ServerStatusBean serverStatusBean = JsonConvert.fromJsonAsT<T>(value.data) as ServerStatusBean;
@@ -74,6 +88,7 @@ class RequestWidgetState<T> extends State<RequestWidget<T>> with RefreshState {
       //   data = JsonConvert.fromJsonAsT<T>(value.data)!;
       // }
     }, onError: (e) {
+      if (!mounted || cancel.isCancelled || request != _request) return;
       setState(() {
         _loading = false;
         _error = true;

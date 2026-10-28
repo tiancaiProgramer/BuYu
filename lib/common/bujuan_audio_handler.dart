@@ -1,3 +1,5 @@
+import 'music/music_source.dart';
+import 'music/qq_music.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -77,6 +79,12 @@ class BujuanAudioHandler extends BaseAudioHandler
   final Box _box;
   final Future<String?> Function(MediaItem)? _urlResolver;
   final Duration loadTimeout;
+  Future<List<MediaItem>> Function(List<MediaItem>)? _radioLoader;
+  Future<void>? _radioRefilling;
+  final _radioRecent = <MediaItem>[];
+  int _radioGeneration = 0;
+  String? _radioSource;
+
   final Duration stallTimeout;
   final bool _television;
   final _subscriptions = <StreamSubscription>[];
@@ -271,7 +279,17 @@ class BujuanAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> changeQueueLists(List<MediaItem> list,
-      {int index = 0, bool init = false}) async {
+      {int index = 0,
+      bool init = false,
+      Future<List<MediaItem>> Function(List<MediaItem>)? radioLoader,
+      String? radioSource}) async {
+    ++_radioGeneration;
+    _radioRefilling = null;
+    _radioLoader = radioLoader;
+    _radioSource = radioSource;
+    if (radioLoader == null) _radioRecent.clear();
+    if (Get.isRegistered<Home>() && (!init || radioLoader != null))
+      Home.to.fm.value = radioLoader != null;
     _playList
       ..clear()
       ..addAll(list);
@@ -291,7 +309,10 @@ class BujuanAudioHandler extends BaseAudioHandler
     queue.add(ordered);
     // playIndex increments the generation before its first await.
     final loading = playIndex(ordered.indexOf(selected), playIt: !init);
-    if (!init) await _saveQueue();
+    if (!init || radioLoader != null) {
+      await _box.put(fmSp, radioLoader != null);
+      await _saveQueue();
+    }
     await loading;
   }
 
@@ -379,14 +400,36 @@ class BujuanAudioHandler extends BaseAudioHandler
     final preferred = AudioQuality.parse(_box.get(audioQualitySp));
     if (_urlResolver != null) {
       final url = await _urlResolver!(song);
-      return url == null || url.isEmpty ? null : _ResolvedAudio(url,
-          AudioQualityReport(songId: song.id, title: song.title, requested: preferred));
+      return url == null || url.isEmpty
+          ? null
+          : _ResolvedAudio(
+              url,
+              AudioQualityReport(
+                  songId: song.id, title: song.title, requested: preferred));
     }
     if (song.extras?['type'] == MediaType.local.name ||
         song.extras?['type'] == MediaType.neteaseCache.name) {
       final url = song.extras?['url'] as String?;
-      return url == null || url.isEmpty ? null : _ResolvedAudio(url,
-          AudioQualityReport(songId: song.id, title: song.title, requested: preferred, local: true));
+      return url == null || url.isEmpty
+          ? null
+          : _ResolvedAudio(
+              url,
+              AudioQualityReport(
+                  songId: song.id,
+                  title: song.title,
+                  requested: preferred,
+                  local: true));
+    }
+    if (sourceOf(song) == MusicSource.qq) {
+      final audio = await QqMusic.instance.audio(song, preferred);
+      return _ResolvedAudio(
+          audio.url,
+          AudioQualityReport(
+              songId: song.id,
+              title: song.title,
+              requested: preferred,
+              returnedLevel: audio.quality.name,
+              serverFormat: audio.format));
     }
     for (final quality in preferred.fallbacks) {
       try {
@@ -395,12 +438,18 @@ class BujuanAudioHandler extends BaseAudioHandler
         // Match by id and retain signed query parameters in the CDN URL.
         final item = response.data?.firstWhereOrNull((e) => e.id == song.id);
         final url = item?.url;
-        if (url != null && url.isNotEmpty) return _ResolvedAudio(url,
-            AudioQualityReport(songId: song.id, title: song.title,
-                requested: preferred, returnedLevel: item!.level,
-                bitrate: item.br, size: item.size,
-                serverFormat: item.type ?? item.encodeType,
-                trial: item.freeTrialInfo != null));
+        if (url != null && url.isNotEmpty)
+          return _ResolvedAudio(
+              url,
+              AudioQualityReport(
+                  songId: song.id,
+                  title: song.title,
+                  requested: preferred,
+                  returnedLevel: item!.level,
+                  bitrate: item.br,
+                  size: item.size,
+                  serverFormat: item.type ?? item.encodeType,
+                  trial: item.freeTrialInfo != null));
       } catch (_) {
         if (quality == AudioQuality.standard) rethrow;
       }
@@ -415,11 +464,13 @@ class BujuanAudioHandler extends BaseAudioHandler
       final info = await probe.inspect(resolved.url);
       if (_isCurrent(request)) {
         qualityReport.value = resolved.report.verified(info);
-        debugPrint('BuJuan audio verification: ${qualityReport.value!.description}');
+        debugPrint(
+            'BuJuan audio verification: ${qualityReport.value!.description}');
       }
     } catch (_) {
-      if (_isCurrent(request)) qualityReport.value = resolved.report.verified(null,
-          error: '实际文件核验未完成，不能确认音频规格');
+      if (_isCurrent(request))
+        qualityReport.value =
+            resolved.report.verified(null, error: '实际文件核验未完成，不能确认音频规格');
     } finally {
       probe.close();
       if (identical(_streamProbe, probe)) _streamProbe = null;
@@ -474,7 +525,11 @@ class BujuanAudioHandler extends BaseAudioHandler
             final AudioSource source;
             if (song.extras?['type'] == MediaType.local.name) {
               final uri = Uri.parse(url);
-              source = uri.scheme == 'content' ? AudioSource.uri(uri, tag: song) : AudioSource.file(uri.scheme == 'file' ? uri.toFilePath() : url, tag: song);
+              source = uri.scheme == 'content'
+                  ? AudioSource.uri(uri, tag: song)
+                  : AudioSource.file(
+                      uri.scheme == 'file' ? uri.toFilePath() : url,
+                      tag: song);
             } else if (song.extras?['type'] == MediaType.neteaseCache.name) {
               source =
                   StreamSource(url, url.replaceAll('.uc!', '').split('.').last);
@@ -560,10 +615,95 @@ class BujuanAudioHandler extends BaseAudioHandler
     }
   }
 
+  /// A platform-bound loader refills FM instead of looping a finite batch.
+  Future<bool> startRadio(String source,
+      Future<List<MediaItem>> Function(List<MediaItem>) loader) async {
+    final generation = ++_radioGeneration;
+    _radioRefilling = null;
+    final request = _request;
+    final first = await loader(const []);
+    if (_disposed || generation != _radioGeneration || request != _request)
+      return false;
+    if (first.isEmpty) throw const MusicServiceError('电台暂时没有可播放的歌曲');
+    _radioRecent.clear();
+    _audioServiceRepeatMode = AudioServiceRepeatMode.all;
+    queueTitle.add('FM · $source');
+    await changeQueueLists(first, radioLoader: loader, radioSource: source);
+    return true;
+  }
+
+  void restoreRadioLoader(
+      String source, Future<List<MediaItem>> Function(List<MediaItem>) loader) {
+    if (_radioLoader == null &&
+        _box.get(fmSp) == true &&
+        queue.value.isNotEmpty) {
+      _radioSource = source;
+      _radioLoader = loader;
+    }
+  }
+
+  Future<void> _refillRadio() async {
+    final generation = _radioGeneration;
+    final request = _request;
+    final loader = _radioLoader;
+    final source = _radioSource;
+    if (loader == null || queue.value.isEmpty) return;
+    final current = queue.value[_curIndex];
+    final seen = {
+      ..._radioRecent.map((s) => s.id),
+      ...queue.value.map((s) => s.id)
+    };
+    final history = [..._radioRecent, ...queue.value];
+    List<MediaItem> batch = [];
+    try {
+      for (var attempt = 0; attempt < 2 && batch.isEmpty; attempt++) {
+        final received = await loader(List.unmodifiable(history));
+        if (_disposed ||
+            (generation != _radioGeneration || request != _request)) return;
+        batch = received.where((s) => seen.add(s.id)).toList();
+      }
+      if (batch.isEmpty) throw const MusicServiceError('电台暂时没有新歌曲，请稍后重试');
+      if (_disposed || (generation != _radioGeneration || request != _request))
+        return;
+      final wanted = _wantsPlay;
+      _radioRecent
+        ..clear()
+        ..addAll(history.skip(history.length > 200 ? history.length - 200 : 0));
+      await changeQueueLists([current, ...batch],
+          index: 1, init: !wanted, radioLoader: loader, radioSource: source);
+    } catch (e) {
+      if (_disposed || (generation != _radioGeneration || request != _request))
+        return;
+      _wantsPlay = false;
+      await _player.pause();
+      if ((generation != _radioGeneration || request != _request)) return;
+      _broadcastState(
+          state: AudioProcessingState.error,
+          error: e is MusicServiceError ? e.message : '电台加载失败，请重试下一首');
+    }
+  }
+
   Future<void> _advance({bool next = true, bool completed = false}) async {
     if (queue.value.isEmpty || _disposed) return;
     final repeat =
         completed && _audioServiceRepeatMode == AudioServiceRepeatMode.one;
+    if (next &&
+        !repeat &&
+        _curIndex == queue.value.length - 1 &&
+        _radioLoader != null) {
+      final active = _radioRefilling;
+      if (active != null) {
+        await active;
+        return;
+      }
+      late final Future<void> refill;
+      refill = _refillRadio().whenComplete(() {
+        if (identical(_radioRefilling, refill)) _radioRefilling = null;
+      });
+      _radioRefilling = refill;
+      await refill;
+      return;
+    }
     final index = repeat
         ? _curIndex
         : (_curIndex + (next ? 1 : -1) + queue.value.length) %
@@ -612,6 +752,10 @@ class BujuanAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> stop() async {
+    ++_radioGeneration;
+    _radioLoader = null;
+    _radioRefilling = null;
+    _radioRecent.clear();
     ++_request;
     _streamProbe?.close();
     _streamProbe = null;

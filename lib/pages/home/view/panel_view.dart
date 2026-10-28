@@ -122,9 +122,10 @@ class PanelView extends GetView<Home> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
+              key: const ValueKey('portrait-favorite'),
               onPressed: () => controller.likeSong(),
-              icon: Obx(() => Icon(controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? Icons.favorite : Icons.favorite_border,
-                  size: 46.w, color: controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? Colors.red : controller.bodyColor.value))),
+              icon: Obx(() => Icon(controller.currentFavorite ? Icons.favorite : Icons.favorite_border,
+                  size: 46.w, color: controller.currentFavorite ? Colors.red : controller.bodyColor.value))),
           Obx(() => IconButton(
               key: const ValueKey('portrait-previous'),
               onPressed: () => controller.audioServeHandler.skipToPrevious(),
@@ -432,7 +433,7 @@ class PanelViewL extends GetView<Home> {
         children: [
           IconButton(
               onPressed: () => controller.likeSong(),
-              icon: Obx(() => Icon(controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? TablerIcons.heartbeat : TablerIcons.heart,
+              icon: Obx(() => Icon(controller.currentFavorite ? TablerIcons.heartbeat : TablerIcons.heart,
                   size: 46.w, color: controller.bodyColor.value))),
           Expanded(
               child: Row(
@@ -650,7 +651,7 @@ class TestView extends GetView<Home> {
         children: [
           IconButton(
               onPressed: () => controller.likeSong(),
-              icon: Obx(() => Icon(controller.likeIds.contains(int.tryParse(controller.mediaItem.value.id)) ? TablerIcons.heartbeat : TablerIcons.heart,
+              icon: Obx(() => Icon(controller.currentFavorite ? TablerIcons.heartbeat : TablerIcons.heart,
                   size: 46.w))),
           Expanded(
               child: Row(

@@ -205,11 +205,11 @@ mixin ApiUser {
 
   DioMetaData updateUserPlayListNameDioMetaData(String id, String name) {
     var params = {'id': id, 'name': name};
-    return DioMetaData(joinUri('/eapi/playlist/update/name'),
+    // The web account session uses the web endpoint for this single-field edit.
+    return DioMetaData(joinUri('/weapi/playlist/update/name'),
         data: params,
         options: joinOptions(
-            encryptType: EncryptType.EApi,
-            eApiUrl: '/api/playlist/update/name'));
+            userAgent: UserAgent.Pc, cookies: {'os': 'pc'}));
   }
 
   /// 更新用户歌单描述
@@ -218,8 +218,17 @@ mixin ApiUser {
   Future<ServerStatusBean> updateUserPlayListName(String id, String name) {
     return Https.dioProxy
         .postUri(updateUserPlayListNameDioMetaData(id, name))
-        .then((Response value) {
-      return ServerStatusBean.fromJson(value.data);
+        .then((Response value) async {
+      final result = ServerStatusBean.fromJson(value.data);
+      if (result.code != 403) return result;
+      // Some server versions expose name edits only through the web batch API.
+      // Send just the name, so description and tags are never overwritten.
+      final batch = await Https.dioProxy.postUri(DioMetaData(joinUri('/weapi/batch'),
+          data: {'/api/playlist/update/name': jsonEncode({'id': id, 'name': name})},
+          options: joinOptions(userAgent: UserAgent.Pc, cookies: {'os': 'pc'})));
+      final data = batch.data;
+      final nested = data is Map ? data['/api/playlist/update/name'] : null;
+      return ServerStatusBean.fromJson(Map<String, dynamic>.from(nested is Map ? nested : data));
     });
   }
 

@@ -151,9 +151,11 @@ mixin ApiLogin {
 
   /// 获取当前登录账号信息
   Future<NeteaseAccountInfoWrap> loginAccountInfo() {
+    final state = NeteaseMusicApi().usc;
+    final revision = state.sessionRevision;
     return Https.dioProxy.postUri(loginAccountInfoDioMetaData()).then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      await NeteaseMusicApi().usc.onLogined(info);
+      await state.onLogined(info, expectedRevision: revision);
       return info;
     });
   }

@@ -1,12 +1,12 @@
 import '../../../common/display_mode.dart';
 import '../../tv/tv_home.dart';
 import '../../tv/tv_player.dart';
+import '../../user/personal_landscape.dart';
 import 'phone_landscape_player.dart';
 import '../../wide/wide_playback.dart';
 import '../../wide/remote_button.dart';
 import 'package:flutter/services.dart';
 
-import 'package:bujuan/common/constants/platform_utils.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/pages/home/view/body_view.dart';
 import 'package:bujuan/pages/home/view/panel_view.dart';
@@ -186,11 +186,7 @@ class HomeView extends GetView<Home> {
     final menuWidth = menuContentWidth + MediaQuery.paddingOf(context).left;
     final drawerSlide =
         wide ? menuWidth + shadowWidth : screen.shortestSide * .24;
-    double bottomHeight =
-        MediaQuery.of(controller.buildContext).padding.bottom *
-            (PlatformUtils.isIOS ? 0.6 : .85);
-    if (bottomHeight == 0 && PlatformUtils.isAndroid || PlatformUtils.isIOS)
-      bottomHeight = 32.w;
+    final bottomHeight = MediaQuery.viewPaddingOf(context).bottom;
     return Material(
         child: DisplayMode.isTv
             ? const TvHome()
@@ -198,7 +194,7 @@ class HomeView extends GetView<Home> {
                 moveMenuScreen: false,
                 menuScreen: const MenuView(),
                 mainScreen: Obx(() {
-                  final started = controller.hasStartedPlayback.value;
+                  final started = controller.showPlaybackControls;
                   final wide = MediaQuery.sizeOf(context).width >
                       MediaQuery.sizeOf(context).height;
                   return SlidingUpPanel(
@@ -212,15 +208,18 @@ class HomeView extends GetView<Home> {
                       BoxShadow(
                           blurRadius: 8.0, color: Color.fromRGBO(0, 0, 0, 0.05))
                     ],
-                    panelBuilder: () => const _PhonePanel(),
+                    isDraggable: started,
+                    panelBuilder: () => started
+                        ? const _PhonePanel()
+                        : const SizedBox.shrink(),
                     body: body ?? const BodyView(),
-                    minHeight: wide
+                    minHeight: !started ? 0 : wide
                         ? (started ? 44 : 0) +
                             MediaQuery.viewPaddingOf(context).bottom
-                        : controller.panelMobileMinSize +
+                        : controller.portraitMiniContentHeight +
                             bottomHeight +
                             controller.panelAlbumPadding * 2,
-                    maxHeight: Get.height,
+                    maxHeight: started ? Get.height : 0,
                     header: _buildHeader(context, bottomHeight),
                   );
                 }),
@@ -242,24 +241,31 @@ class HomeView extends GetView<Home> {
   }
 
   Widget _buildHeader(context, bottomHeight) {
+    if (!controller.showPlaybackControls) return const SizedBox.shrink();
     if (MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height) {
       return Obx(() {
-        final started = controller.hasStartedPlayback.value;
+        final started = controller.showPlaybackControls;
         final open = controller.panelOpenPositionThan1.value;
         if (open) return const SizedBox.shrink();
         if (!started) return const SizedBox.shrink();
-        return SafeArea(
-            top: false,
-            child: SizedBox(
-                height: 44,
-                width: MediaQuery.sizeOf(context).width,
-                child: Material(
-                    color: Theme.of(context).scaffoldBackgroundColor,
+        // Constrain the header before applying camera/gesture insets. The
+        // panel positions its header without a horizontal constraint.
+        return SizedBox(
+            width: MediaQuery.sizeOf(context).width,
+            child: Material(
+                key: const ValueKey('phone-mini-player-surface'),
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: SafeArea(
+                    top: false,
+                    child: SizedBox(
+                        height: 44,
                     child: InkWell(
                         key: const ValueKey('phone-mini-player'),
                         onTap: () => controller.panelControllerHome.open(),
                         child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.only(
+                                left: 12,
+                                right: PersonalLandscape.playlistRightInset),
                             child: Row(children: [
                               ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
@@ -284,7 +290,7 @@ class HomeView extends GetView<Home> {
                                           ? TablerIcons.player_pause
                                           : TablerIcons.player_play,
                                       size: 25)),
-                            ]))))));
+                            ])))))));
       });
     }
     return AnimatedBuilder(
@@ -336,6 +342,7 @@ class HomeView extends GetView<Home> {
             child: Swipeable(
                 background: const SizedBox.shrink(),
                 child: InkWell(
+                  key: const ValueKey('portrait-mini-player'),
                   child: Container(
                     width: MediaQuery.sizeOf(context).width,
                     padding: EdgeInsets.all(controller.panelAlbumPadding),
@@ -376,9 +383,10 @@ class HomeView extends GetView<Home> {
                           left: controller.panelMobileMinSize +
                               controller.panelAlbumPadding),
                       alignment: Alignment.centerLeft,
-                      height: controller.panelMobileMinSize,
+                      height: controller.portraitMiniContentHeight,
                       child: Obx(
                         () => RichText(
+                          key: const ValueKey('portrait-mini-title'),
                           text: TextSpan(
                               text: '${Home.to.mediaItem.value.title} - ',
                               children: [
@@ -399,6 +407,7 @@ class HomeView extends GetView<Home> {
                         ),
                       ))),
               IconButton(
+                  key: const ValueKey('portrait-mini-toggle'),
                   onPressed: () => controller.playOrPause(),
                   icon: Obx(() => Icon(
                         controller.playing.value

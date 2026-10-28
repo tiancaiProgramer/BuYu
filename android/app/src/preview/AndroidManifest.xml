@@ -1,0 +1,4 @@
+<!-- Community maintenance and new features: tiancaiProgramer. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="BuYu 共存测试" tools:replace="android:label" />
+</manifest>

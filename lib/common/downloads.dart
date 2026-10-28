@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/digests/md5.dart';
 import 'audio_quality.dart';
+import 'music/music_source.dart';
+import 'music/qq_music.dart';
 import 'audio_stream_info.dart';
 import 'netease_api/src/dio_ext.dart';
 import 'netease_api/src/netease_handler.dart';
@@ -26,13 +28,15 @@ class DownloadSource {
 enum DownloadState { queued, downloading, saving, complete, failed, cancelled }
 
 class DownloadJob {
-  DownloadJob(this.song, this.quality);
+  DownloadJob(this.song, this.quality) : createdAt = DateTime.now();
   final MediaItem song;
   final AudioQuality quality;
   String get key => '${song.id}:${quality.name}';
   DownloadState state = DownloadState.queued;
   int received = 0, total = 0;
-  String? uri, error, filename, actual;
+  String? uri, error, filename, actual, resolvedQuality, savedFolder;
+  DateTime? createdAt, finishedAt;
+  int attempts = 0;
   CancelToken token = CancelToken();
   bool get active => [
         DownloadState.queued,
@@ -62,6 +66,14 @@ class DownloadJob {
             'image': song.extras?['image'] ?? ''
           });
   Map<String, dynamic> toMap() => {
+        'song':
+            saveSong(song.copyWith(extras: {...?song.extras}..remove('url'))),
+        'createdAt': createdAt?.millisecondsSinceEpoch,
+        'finishedAt': finishedAt?.millisecondsSinceEpoch,
+        'attempts': attempts,
+        'resolvedQuality': resolvedQuality,
+        'savedFolder': savedFolder,
+        'error': error,
         'id': song.id,
         'title': song.title,
         'artist': song.artist,
@@ -78,18 +90,37 @@ class DownloadJob {
       };
   static DownloadJob fromMap(Map map) {
     final job = DownloadJob(
-        MediaItem(
-            id: map['id'] as String,
-            title: map['title'] as String,
-            artist: map['artist'] as String?,
-            album: map['album'] as String?,
-            duration: map['duration'] == null
-                ? null
-                : Duration(milliseconds: map['duration'] as int),
-            extras: {'image': map['image']}),
+        map['song'] is Map
+            ? restoreSong(map['song'] as Map)
+            : MediaItem(
+                id: map['id'] as String,
+                title: map['title'] as String,
+                artist: map['artist'] as String?,
+                album: map['album'] as String?,
+                duration: map['duration'] == null
+                    ? null
+                    : Duration(milliseconds: map['duration'] as int),
+                extras: {
+                    'image': map['image'],
+                    if ((map['id'] as String).startsWith('qq:')) ...{
+                      'source': 'qq',
+                      'type': 'qq',
+                      'mid': (map['id'] as String).substring(3)
+                    }
+                  }),
         AudioQuality.parse(map['quality']));
     job.state = DownloadState.values.firstWhere((s) => s.name == map['state'],
         orElse: () => DownloadState.failed);
+    job.createdAt = map['createdAt'] is int
+        ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
+        : null;
+    job.finishedAt = map['finishedAt'] is int
+        ? DateTime.fromMillisecondsSinceEpoch(map['finishedAt'])
+        : null;
+    job.attempts = map['attempts'] as int? ?? 0;
+    job.resolvedQuality = map['resolvedQuality'] as String?;
+    job.savedFolder = map['savedFolder'] as String?;
+    job.error = map['error'] as String?;
     job.uri = map['uri'] as String?;
     job.filename = map['filename'] as String?;
     job.actual = map['actual'] as String?;
@@ -135,8 +166,10 @@ class Downloads extends ChangeNotifier {
   static const folderNameKey = 'DOWNLOAD_FOLDER_NAME';
   AudioQuality get defaultQuality =>
       AudioQuality.parse(box.get(qualityKey, defaultValue: 'exhigh'));
-  String get folderLabel =>
-      box.get(folderNameKey, defaultValue: 'Music/BuJuan') as String;
+  String get folderLabel => box.get(folderNameKey,
+      defaultValue: const bool.fromEnvironment('BUYU_COEXIST')
+          ? 'Music/BuYuPreview'
+          : 'Music/BuJuan') as String;
   void settingsChanged() => _notify();
 
   static Downloads get instance {
@@ -209,6 +242,29 @@ class Downloads extends ChangeNotifier {
   static Future<DownloadSource> resolveOfficial(
       MediaItem song, AudioQuality preferred,
       {CancelToken? cancelToken}) async {
+    if (sourceOf(song) == MusicSource.qq) {
+      final qq = QqMusic.instance;
+      await qq.restore();
+      if (!qq.loggedIn) throw StateError('请先登录QQ音乐后下载');
+      final data = await qq.rpc('music.pf_song_detail_svr',
+          'get_song_detail_yqq', {'song_mid': song.extras?['mid']},
+          auth: true);
+      final info = data['track_info'];
+      if (info is! Map || info['mid'] != song.extras?['mid'])
+        throw StateError('QQ歌曲信息尚未确认');
+      final track = QqMusic.song(info);
+      final source = await qq.audio(track, preferred, cancelToken: cancelToken);
+      final field = switch (source.quality) {
+        AudioQuality.hires => 'size_hires',
+        AudioQuality.lossless => 'size_flac',
+        AudioQuality.exhigh => 'size_320mp3',
+        _ => 'size_128mp3',
+      };
+      final size = (track.extras?['file']?[field] as num?)?.toInt();
+      return DownloadSource(source.url,
+          size: size != null && size > 0 ? size : null,
+          level: source.quality.name);
+    }
     for (final quality in preferred.fallbacks) {
       final metadata = DioMetaData(
           Uri.parse(
@@ -276,7 +332,8 @@ class Downloads extends ChangeNotifier {
 
   Future<void> add(MediaItem song, {AudioQuality? quality}) async {
     quality ??= defaultQuality;
-    if (song.extras?['type'] == 'local' || (int.tryParse(song.id) ?? 0) <= 0)
+    if (isLocalSong(song) ||
+        sourceOf(song) != MusicSource.qq && (int.tryParse(song.id) ?? 0) <= 0)
       throw StateError('本地歌曲无需下载');
     var job = forSong(song, quality: quality);
     if (job?.active == true || job?.state == DownloadState.complete) return;
@@ -285,6 +342,8 @@ class Downloads extends ChangeNotifier {
       jobs.insert(0, job);
     }
     job.state = DownloadState.queued;
+    job.attempts++;
+    job.finishedAt = null;
     job.error = null;
     job.received = 0;
     job.total = 0;
@@ -327,6 +386,7 @@ class Downloads extends ChangeNotifier {
       _notify();
       await _persist();
       final source = await _resolve(job.song, job.quality, job.token);
+      job.resolvedQuality = source.level;
       if (job.token.isCancelled) throw StateError('cancelled');
       final directory = await _directory();
       await directory.create(recursive: true);
@@ -382,11 +442,13 @@ class Downloads extends ChangeNotifier {
           '${safeName('${job.song.title} - ${job.song.artist ?? ''}')} [${safeName(job.song.id)}_${job.quality.name}].$extension';
       job.state = DownloadState.saving;
       _notify();
+      job.savedFolder = folderLabel;
       job.uri = await _publish(temporary, name, job.song,
           extension == 'flac' ? 'audio/flac' : 'audio/mpeg');
       job.filename = name;
       job.actual = info.description;
       job.state = DownloadState.complete;
+      job.finishedAt = DateTime.now();
       job.received = size;
       job.total = size;
       await _persist();
@@ -397,9 +459,13 @@ class Downloads extends ChangeNotifier {
         job.state = DownloadState.cancelled;
       } else {
         job.state = DownloadState.failed;
-        job.error =
-            error is StateError ? error.message.toString() : '下载失败，请检查网络后重试';
+        job.error = error is StateError
+            ? error.message.toString()
+            : error is MusicServiceError
+                ? error.message
+                : '下载失败，请检查网络后重试';
       }
+      job.finishedAt = DateTime.now();
       await _persist();
     } finally {
       try {

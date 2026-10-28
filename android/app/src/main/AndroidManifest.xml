@@ -20,6 +20,9 @@
         android:label="BuYu"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
+        <activity android:name=".QqLoginActivity" android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|uiMode"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <activity
             android:name="com.sixbugs.bujuan.WebLoginActivity"
             android:exported="false"

@@ -1,5 +1,6 @@
 // Community maintenance and new features: tiancaiProgramer.
 import 'package:flutter/material.dart';
+import '../common/app_style.dart';
 
 /// The existing actions use two columns when the screen is wide, and remain
 /// scrollable on short displays or when the user enlarges system text.
@@ -14,23 +15,17 @@ class AdaptiveOptionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final background = theme.scaffoldBackgroundColor;
-    final foreground =
-        ThemeData.estimateBrightnessForColor(background) == Brightness.dark
-            ? Colors.white
-            : const Color(0xff333333);
-    final accent = theme.brightness == Brightness.dark
-        ? const Color(0xffef9a9a)
-        : const Color(0xffc84c4a);
+    final foreground = BuYuStyle.foreground(theme);
+    final accent = BuYuStyle.action(theme);
     return Theme(
         data: theme.copyWith(
-            primaryColor: accent,
             unselectedWidgetColor: foreground.withOpacity(.65),
             iconTheme: theme.iconTheme.copyWith(color: foreground),
             textTheme: theme.textTheme
                 .apply(bodyColor: foreground, displayColor: foreground),
             colorScheme: theme.colorScheme.copyWith(
                 primary: accent, secondary: accent, onSurface: foreground),
-            listTileTheme: ListTileThemeData(
+            listTileTheme: theme.listTileTheme.copyWith(
                 textColor: foreground, iconColor: foreground)),
         child: DefaultTextStyle.merge(
             style: TextStyle(color: foreground),
@@ -54,18 +49,18 @@ class AdaptiveOptionSheet extends StatelessWidget {
                       Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(title,
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w600))),
+                              style: TextStyle(
+                                  color:
+                                      BuYuStyle.foreground(Theme.of(context)),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600))),
                       Wrap(spacing: 12, runSpacing: 8, children: [
                         for (final child in children)
                           SizedBox(
                               width: width,
                               child: Material(
                                   borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSecondary
-                                      .withOpacity(.5),
+                                  color: BuYuStyle.card(Theme.of(context)),
                                   clipBehavior: Clip.antiAlias,
                                   child: child)),
                       ]),

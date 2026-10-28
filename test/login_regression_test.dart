@@ -152,7 +152,7 @@ Future<void> _open(WidgetTester tester, _LoginApi api,
                 onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) =>
-                            LoginViewPage(api: api, webLogin: webLogin))),
+                            LoginViewPage(api: api, webLogin: webLogin, autoQr: false))),
                 child: const Text('打开登录'),
               ))),
     ),
@@ -464,6 +464,12 @@ void main() {
       expect(find.byType(LoginViewPage), findsOneWidget);
       refreshed.complete(true);
       await tester.pumpAndSettle();
+      expect(find.byType(LoginViewPage), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('跳转主页'), findsOneWidget);
+      expect(find.text('继续登录QQ音乐'), findsOneWidget);
+      await tester.tap(find.text('跳转主页'));
+      await tester.pumpAndSettle();
       expect(find.byType(LoginViewPage), findsNothing);
     });
 
@@ -540,7 +546,7 @@ void main() {
       expect(find.byType(LoginViewPage), findsOneWidget);
     });
 
-    testWidgets('QR authorization waits for profile refresh and then returns',
+    testWidgets('QR authorization waits for profile then shows platform actions',
         (tester) async {
       final refreshed = Completer<bool>();
       user.response = () => refreshed.future;
@@ -553,7 +559,9 @@ void main() {
       expect(user.refreshes, 1);
       refreshed.complete(true);
       await tester.pumpAndSettle();
-      expect(find.byType(LoginViewPage), findsNothing);
+      expect(find.byType(LoginViewPage), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('退出网易云登录'), findsOneWidget);
     });
 
     testWidgets('closing while a QR key is loading ignores the late result',

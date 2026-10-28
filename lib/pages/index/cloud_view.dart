@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import '../../widget/cloud_account_gate.dart';
+import '../login/login.dart';
+import '../user/user_controller.dart';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/pages/index/cound_controller.dart';
@@ -37,44 +41,55 @@ class AlbumView extends GetWidget<CloudController> {
                       color: Theme.of(context).primaryColor.withOpacity(.9))),
             ])),
       ),
-      body: RequestLoadMoreWidget<CloudSongListWrap, CloudSongItem>(
-          listKey: const ['data'],
-          dioMetaData: controller.cloudSongDioMetaData(),
-          childBuilder: (List<CloudSongItem> data) {
-            controller.mediaItems
-              ..clear()
-              ..addAll(data
-                  .map((e) => MediaItem(
-                      id: e.simpleSong.id,
-                      duration: Duration(milliseconds: e.simpleSong.dt ?? 0),
-                      artUri: Uri.parse(
-                          '${e.simpleSong.al?.picUrl ?? ''}?param=500y500'),
-                      extras: {
-                        'url': '',
-                        'image': e.simpleSong.al?.picUrl ?? '',
-                        'type': '',
-                        'liked': Home.to.likeIds
-                            .contains(int.tryParse(e.simpleSong.id)),
-                        'artist': (e.simpleSong.ar ?? [])
-                            .map((e) => jsonEncode(e.toJson()))
-                            .toList()
-                            .join(' / ')
-                      },
-                      title: e.simpleSong.name ?? "",
-                      album: jsonEncode(e.simpleSong.al?.toJson()),
-                      artist: (e.simpleSong.ar ?? [])
-                          .map((e) => e.name)
-                          .toList()
-                          .join(' / ')))
-                  .toList());
-            return buildSongCollection(context,
-                songs: controller.mediaItems,
-                storageId: 'cloud',
-                portraitShrinkWrap: true,
-                portraitPadding: EdgeInsets.symmetric(horizontal: 20.w),
-                onPlay: (index) => Home.to.playByIndex(index, 'queueTitle',
-                    mediaItem: controller.mediaItems));
-          }),
+      body: Obx(() => CloudAccountGate(
+          loggedIn: Home.to.loginStatus.value == LoginStatus.login,
+          accountId: Home.to.userData.value.profile?.userId,
+          onLogin: () async {
+            await Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const LoginViewPage()));
+          },
+          contentBuilder: (_, loginRequired) =>
+              RequestLoadMoreWidget<CloudSongListWrap, CloudSongItem>(
+                  authenticationRequiredBuilder: loginRequired,
+                  listKey: const ['data'],
+                  dioMetaData: controller.cloudSongDioMetaData(),
+                  childBuilder: (List<CloudSongItem> data) {
+                    controller.mediaItems
+                      ..clear()
+                      ..addAll(data
+                          .map((e) => MediaItem(
+                              id: e.simpleSong.id,
+                              duration:
+                                  Duration(milliseconds: e.simpleSong.dt ?? 0),
+                              artUri: Uri.parse(
+                                  '${e.simpleSong.al?.picUrl ?? ''}?param=500y500'),
+                              extras: {
+                                'url': '',
+                                'image': e.simpleSong.al?.picUrl ?? '',
+                                'type': '',
+                                'liked': Home.to.likeIds
+                                    .contains(int.tryParse(e.simpleSong.id)),
+                                'artist': (e.simpleSong.ar ?? [])
+                                    .map((e) => jsonEncode(e.toJson()))
+                                    .toList()
+                                    .join(' / ')
+                              },
+                              title: e.simpleSong.name ?? "",
+                              album: jsonEncode(e.simpleSong.al?.toJson()),
+                              artist: (e.simpleSong.ar ?? [])
+                                  .map((e) => e.name)
+                                  .toList()
+                                  .join(' / ')))
+                          .toList());
+                    return buildSongCollection(context,
+                        songs: controller.mediaItems,
+                        storageId: 'cloud',
+                        portraitShrinkWrap: true,
+                        portraitPadding: EdgeInsets.symmetric(horizontal: 20.w),
+                        onPlay: (index) => Home.to.playByIndex(
+                            index, 'queueTitle',
+                            mediaItem: controller.mediaItems));
+                  }))),
     ));
   }
 }

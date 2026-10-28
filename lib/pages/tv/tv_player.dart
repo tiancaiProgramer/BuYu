@@ -130,10 +130,10 @@ class TvControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PlaybackSlice(
       playback: playback,
-      select: (d) => (d.playing, d.repeat),
+      select: (d) => (d.playing, d.repeat, d.favorite),
       builder: (_, data) =>
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            if (!mini) _button('收藏', TablerIcons.heart, playback.favorite),
+            if (!mini) _button('收藏', data.favorite ? Icons.favorite : TablerIcons.heart, playback.favorite),
             _button('上一首', TablerIcons.player_skip_back, playback.previous),
             _button(
                 'toggle',

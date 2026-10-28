@@ -1,67 +1,76 @@
+import '../app_style.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppTheme {
-  static ThemeData light = ThemeData.light(useMaterial3: false).copyWith(
-      colorScheme: ThemeData.light(useMaterial3: false).colorScheme.copyWith(
-            primary: primary,
-            onPrimary: onPrimary,
-            secondary: secondary,
-            onSecondary: onSecondary,
-            surface: surface,
-            onSurface: onSurface,
+  static ThemeData light = BuYuStyle.components(
+      ThemeData.light(useMaterial3: false).copyWith(
+          colorScheme:
+              ThemeData.light(useMaterial3: false).colorScheme.copyWith(
+                    primary: primary,
+                    onPrimary: onPrimary,
+                    secondary: secondary,
+                    onSecondary: onSecondary,
+                    surface: surface,
+                    onSurface: onSurface,
+                  ),
+          pageTransitionsTheme: const PageTransitionsTheme(builders: {
+            TargetPlatform.android: NoShadowCupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+          }),
+          cardColor: const Color(0xFF2C2C2C),
+          iconTheme: const IconThemeData(color: Color(0xFF4D4D4D)),
+          primaryColor: const Color(0xffe56260),
+          textTheme: const TextTheme(
+            titleLarge: TextStyle(color: Color(0xFF4D4D4D)),
+            titleMedium: TextStyle(color: Color(0xFF4D4D4D)),
+            titleSmall: TextStyle(color: Color(0xFF4D4D4D)),
+            displayLarge: TextStyle(color: Color(0xFF4D4D4D)),
+            displayMedium: TextStyle(color: Color(0xFF4D4D4D)),
+            displaySmall: TextStyle(color: Color(0xFF4D4D4D)),
+            bodyLarge: TextStyle(color: Color(0xFF4D4D4D)),
+            bodyMedium: TextStyle(color: Color(0xFF4D4D4D)),
+            bodySmall: TextStyle(color: Color(0xFF4D4D4D)),
+            headlineLarge: TextStyle(color: Color(0xFF4D4D4D)),
+            headlineMedium: TextStyle(color: Color(0xFF4D4D4D)),
+            headlineSmall: TextStyle(color: Color(0xFF4D4D4D)),
           ),
-      pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: NoShadowCupertinoPageTransitionsBuilder(),
-        TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
-      }),
-      cardColor: const Color(0xFF2C2C2C),
-      iconTheme: const IconThemeData(color: Color(0xFF4D4D4D)),
-      primaryColor: const Color(0xffe56260),
-      textTheme: const TextTheme(
-        titleLarge:TextStyle(color: Color(0xFF4D4D4D)) ,
-        titleMedium:TextStyle(color: Color(0xFF4D4D4D)) ,
-        titleSmall:TextStyle(color: Color(0xFF4D4D4D)) ,
-        displayLarge:TextStyle(color: Color(0xFF4D4D4D)) ,
-        displayMedium:TextStyle(color: Color(0xFF4D4D4D)) ,
-        displaySmall:TextStyle(color: Color(0xFF4D4D4D)) ,
-        bodyLarge:TextStyle(color: Color(0xFF4D4D4D)) ,
-        bodyMedium:TextStyle(color: Color(0xFF4D4D4D)) ,
-        bodySmall:TextStyle(color: Color(0xFF4D4D4D)) ,
-        headlineLarge:TextStyle(color: Color(0xFF4D4D4D)) ,
-        headlineMedium:TextStyle(color: Color(0xFF4D4D4D)) ,
-        headlineSmall:TextStyle(color: Color(0xFF4D4D4D)) ,
-      ),
-      // bottomAppBarColor: onPrimaryDark,
-      scaffoldBackgroundColor: const Color(0xFFF5F3F3),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFFF5F3F3), foregroundColor: primaryDark, elevation: 0));
+          // bottomAppBarColor: onPrimaryDark,
+          scaffoldBackgroundColor: const Color(0xFFF5F3F3),
+          appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFFF5F3F3),
+              foregroundColor: primaryDark,
+              elevation: 0)));
 
-  static ThemeData dark = ThemeData.dark(useMaterial3: false).copyWith(
-    useMaterial3: false,
-      colorScheme: ThemeData.dark(useMaterial3: false).colorScheme.copyWith(
-            primary: primaryDark,
-            onPrimary: onPrimaryDark,
-            secondary: onSecondary,
-            onSecondary: secondary,
-            surface: surfaceDark,
-            onSurface: onSurfaceDark,
-          ),
-      pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
-      }),
-      cardColor: const Color(0xFFECEBEB),
-      primaryColor: const Color(0xffe56260),
-      // bottomAppBarColor: onSurfaceDark,
-      scaffoldBackgroundColor: const Color(0xff121212),
-      appBarTheme: const AppBarTheme(
-          systemOverlayStyle: SystemUiOverlayStyle(statusBarBrightness: Brightness.light, statusBarIconBrightness: Brightness.light),
-          backgroundColor:  Color(0xff121212),
-          foregroundColor: primary,
-          elevation: 0));
+  static ThemeData dark = BuYuStyle.components(
+      ThemeData.dark(useMaterial3: false).copyWith(
+          useMaterial3: false,
+          colorScheme: ThemeData.dark(useMaterial3: false).colorScheme.copyWith(
+                primary: primaryDark,
+                onPrimary: onPrimaryDark,
+                secondary: onSecondary,
+                onSecondary: secondary,
+                surface: surfaceDark,
+                onSurface: onSurfaceDark,
+              ),
+          pageTransitionsTheme: const PageTransitionsTheme(builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+          }),
+          cardColor: const Color(0xFFECEBEB),
+          primaryColor: const Color(0xffe56260),
+          // bottomAppBarColor: onSurfaceDark,
+          scaffoldBackgroundColor: const Color(0xff121212),
+          appBarTheme: const AppBarTheme(
+              systemOverlayStyle: SystemUiOverlayStyle(
+                  statusBarBrightness: Brightness.light,
+                  statusBarIconBrightness: Brightness.light),
+              backgroundColor: Color(0xff121212),
+              foregroundColor: primary,
+              elevation: 0)));
 
   //right background
   static const primaryDark = Color(0xFF1c1d1f);

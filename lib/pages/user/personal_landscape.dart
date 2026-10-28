@@ -22,9 +22,13 @@ class PersonalLandscape extends StatelessWidget {
   static const _railRight = 8 + (74 - _railWidth) / 2;
   static const _remainingGap = 14 + (74 - _railWidth) / 2 - _contentShift;
   static const _gridRight = 8 + 6 + (74 - _railWidth) / 2 - _contentShift;
+  // Shared with the mini player so both controls end at the playlist edge.
+  static const playlistRightInset = _railWidth + _railRight + _gridRight;
 
   const PersonalLandscape(
       {super.key,
+      this.playlistFilter,
+      this.showLiked = true,
       required this.nickname,
       required this.avatar,
       required this.liked,
@@ -34,6 +38,8 @@ class PersonalLandscape extends StatelessWidget {
       required this.onManage,
       required this.onAvatar,
       required this.onSearch});
+  final bool showLiked;
+  final Widget? playlistFilter;
   final String nickname, avatar;
   final Play liked;
   final List<Play> playlists;
@@ -66,7 +72,7 @@ class PersonalLandscape extends StatelessWidget {
           // Align the visible text with the avatar, retaining its font metrics.
           title: Transform.translate(
               offset: const Offset(0, -1),
-              child: Text('喜欢的音乐 · 我的歌单',
+              child: Text(showLiked ? '喜欢的音乐 · 我的歌单' : '我的歌单',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -95,10 +101,16 @@ class PersonalLandscape extends StatelessWidget {
                         icon: const Icon(TablerIcons.search, size: 25)))),
             const SizedBox(width: _railRight),
           ]),
-      body: Row(children: [
+      body: Column(children: [
+        if (playlistFilter != null)
+          Padding(
+              padding: const EdgeInsets.only(right: playlistRightInset),
+              child: Align(
+                  alignment: Alignment.centerLeft, child: playlistFilter!)),
+        Expanded(child: Row(children: [
         const SizedBox(width: _contentShift),
         Expanded(child: LayoutBuilder(builder: (context, constraints) {
-          final lists = [liked, ...playlists];
+          final lists = [if(showLiked) liked, ...playlists];
           return Scrollbar(
               child: GridView.builder(
                   key: const PageStorageKey('user:landscape-grid'),
@@ -149,7 +161,7 @@ class PersonalLandscape extends StatelessWidget {
                                                 CrossAxisAlignment.start,
                                             children: [
                                           Text(
-                                              i == 0
+                                              showLiked && i == 0
                                                   ? '喜欢的音乐'
                                                   : list.name ?? '',
                                               maxLines: 2,
@@ -172,16 +184,22 @@ class PersonalLandscape extends StatelessWidget {
                             })));
                   }));
         })),
-        SizedBox(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: SizedBox(
             width: _railWidth,
-            child: Column(children: [
+            child: LayoutBuilder(builder: (context, bounds) {
+              final buttons = <Widget>[
               for (final action in actions)
-                Expanded(
+                SizedBox(
+                    height: 48,
                     child: InkWell(
                         key: ValueKey('personal-action:${action.title}'),
                         onTap: action.onPressed,
-                        child: Center(
+                        child: Align(
+                            alignment: Alignment.topCenter,
                             child: Column(
+                                key: ValueKey('personal-action-content:${action.title}'),
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                               Icon(action.icon, size: 25),
@@ -190,7 +208,16 @@ class PersonalLandscape extends StatelessWidget {
                                   style: const TextStyle(
                                       fontSize: 13, height: 1.2)),
                             ])))),
-            ])),
+              ];
+              if (bounds.maxHeight < buttons.length * 48) {
+                return SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: buttons));
+              }
+              return Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: buttons);
+            }))),
         const SizedBox(width: _railRight),
+      ])),
       ]));
 }

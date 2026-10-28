@@ -1,5 +1,6 @@
-
 import 'package:auto_route/auto_route.dart';
+import '../music/discovery_sources.dart';
+import '../music/qq_discovery_views.dart';
 import 'package:bujuan/routes/router.gr.dart';
 import 'package:bujuan/widget/my_get_view.dart';
 import 'package:bujuan/widget/request_widget/request_loadmore_view.dart';
@@ -20,28 +21,35 @@ class MyRadioView extends StatefulWidget {
 }
 
 class _MyRadioViewState extends State<MyRadioView> {
-  DioMetaData djRadioSubListDioMetaData({bool total = true, int offset = 0, int limit = 30}) {
+  DioMetaData djRadioSubListDioMetaData(
+      {bool total = true, int offset = 0, int limit = 30}) {
     var params = {'total': total, 'limit': limit, 'offset': offset};
-    return DioMetaData(joinUri('/weapi/djradio/get/subed'), data: params, options: joinOptions());
+    return DioMetaData(joinUri('/weapi/djradio/get/subed'),
+        data: params, options: joinOptions());
   }
 
   @override
   Widget build(BuildContext context) {
-    return MyGetView(child: Scaffold(
+    return MyGetView(
+        child: Scaffold(
       backgroundColor: Colors.transparent,
       appBar: MyAppBar(
         backgroundColor: Colors.transparent,
+        title: const Text('播客'),
       ),
-      body: RequestLoadMoreWidget<DjRadioListWrap, DjRadio>(
-          listKey: const ['djRadios'],
-          dioMetaData: djRadioSubListDioMetaData(),
-          childBuilder: (List<DjRadio> list) {
-            return ListView.builder(
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
-              itemBuilder: (context, index) => _buildItem(list[index]),
-              itemCount: list.length,
-            );
-          }),
+      body: DiscoverySources(
+          id: 'podcast',
+          qq: (_) => const QqPodcastsView(),
+          netease: (_) => RequestLoadMoreWidget<DjRadioListWrap, DjRadio>(
+              listKey: const ['djRadios'],
+              dioMetaData: djRadioSubListDioMetaData(),
+              childBuilder: (List<DjRadio> list) {
+                return ListView.builder(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  itemBuilder: (context, index) => _buildItem(list[index]),
+                  itemCount: list.length,
+                );
+              })),
     ));
   }
 
@@ -52,7 +60,7 @@ class _MyRadioViewState extends State<MyRadioView> {
           child: Row(
             children: [
               SimpleExtendedImage(
-                '${data.picUrl ?? ''}?param=200y200',
+                '${data.picUrl}?param=200y200',
                 width: 85.w,
                 height: 85.w,
                 borderRadius: BorderRadius.circular(10.w),

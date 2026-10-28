@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:audio_service/audio_service.dart';
 import 'package:bujuan/common/bujuan_audio_handler.dart';
 import 'package:bujuan/common/constants/colors.dart';
 import 'package:bujuan/common/display_mode.dart';
@@ -116,7 +117,20 @@ void main() {
                                           nickname: '',
                                           avatar: '',
                                           liked: liked,
-                                          playlists: const [],
+                                          playlists: List.generate(
+                                              2,
+                                              (i) => Play()
+                                                ..id = 'alignment:$i'
+                                                ..name = '歌单 $i'),
+                                          playlistFilter: Row(children: [
+                                            const Expanded(child: Text('合并显示')),
+                                            IconButton(
+                                                key: const ValueKey(
+                                                    'user-playlists-toggle'),
+                                                onPressed: () {},
+                                                icon: const Icon(
+                                                    Icons.expand_less)),
+                                          ]),
                                           actions: [
                                             PersonalAction(
                                                 'FM', TablerIcons.vinyl, () {})
@@ -245,8 +259,32 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('personal-list:liked')));
     await tester.pump();
     expect(playlistTaps, 1);
+    home!.mediaItem.value = const MediaItem(id: 'aligned-song', title: '测试歌曲');
     home!.hasStartedPlayback.value = true;
     await tester.pump();
+    for (final insets in [
+      const FakeViewPadding(left: 43),
+      const FakeViewPadding(right: 43),
+    ]) {
+      tester.view.padding = insets;
+      tester.view.viewPadding = insets;
+      await tester.pump(const Duration(milliseconds: 400));
+      final card = tester
+          .getRect(find.byKey(const ValueKey('personal-list:alignment:1')));
+      final fold =
+          tester.getRect(find.byKey(const ValueKey('user-playlists-toggle')));
+      final playback =
+          tester.getRect(find.byKey(const ValueKey('phone-mini-toggle')));
+      expect(fold.right, closeTo(card.right, .01));
+      expect(playback.right, closeTo(fold.right, .01));
+      expect(playback.center.dx, closeTo(fold.center.dx, .01));
+      expect(find.byKey(const ValueKey('phone-mini-toggle')).hitTestable(),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+    tester.view.resetPadding();
+    tester.view.resetViewPadding();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(const ValueKey('personal-list:liked')));
     await tester.pump();
     expect(playlistTaps, 2);
@@ -269,6 +307,7 @@ void main() {
     expect(scroll.offset, 350);
     expect(home!.landscape, isFalse);
     expect(find.byKey(const ValueKey('phone-mini-player')), findsNothing);
+    home!.mediaItem.value = const MediaItem(id: 'selected-song', title: '已选择歌曲');
     home!.hasStartedPlayback.value = true;
     home!.playing.value = true;
     await tester.pump();
@@ -279,6 +318,43 @@ void main() {
     expect(navigator.currentState, same(originalNavigator));
     expect(scroll.position, same(position));
     expect(tester.takeException(), isNull);
+    // The collapsed panel header is positioned without horizontal constraints.
+    // A full-width child inside SafeArea used to add the cutout twice and push
+    // the playback button beyond the display on camera-left landscape phones.
+    for (final size in [const Size(844, 390), const Size(916, 393)]) {
+      tester.view.physicalSize = size;
+      for (final insets in [
+        const FakeViewPadding(top: 20, left: 43),
+        const FakeViewPadding(top: 20, right: 43),
+      ]) {
+        tester.view.padding = insets;
+        tester.view.viewPadding = insets;
+        await tester.pump(const Duration(milliseconds: 400));
+        final bar =
+            tester.getRect(find.byKey(const ValueKey('phone-mini-player')));
+        final toggle =
+            tester.getRect(find.byKey(const ValueKey('phone-mini-toggle')));
+        expect(bar.left, greaterThanOrEqualTo(insets.left));
+        expect(bar.right, lessThanOrEqualTo(size.width - insets.right));
+        expect(toggle.right, lessThanOrEqualTo(size.width - insets.right));
+        expect(toggle.bottom, lessThanOrEqualTo(size.height));
+        expect(find.byKey(const ValueKey('phone-mini-toggle')).hitTestable(),
+            findsOneWidget);
+        final surfaceFinder =
+            find.byKey(const ValueKey('phone-mini-player-surface'));
+        final surface = tester.getRect(surfaceFinder);
+        expect(surface.left, 0);
+        expect(surface.right, size.width);
+        expect(surface.bottom, size.height);
+        expect(tester.widget<Material>(surfaceFinder).color,
+            AppTheme.light.scaffoldBackgroundColor);
+        expect(tester.takeException(), isNull);
+      }
+    }
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.resetPadding();
+    tester.view.resetViewPadding();
+    await tester.pump(const Duration(milliseconds: 400));
     home!.panelControllerHome.open();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 800));

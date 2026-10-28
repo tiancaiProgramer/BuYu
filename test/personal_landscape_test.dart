@@ -15,6 +15,7 @@ void main() {
         'three columns and original shortcuts fit beside cards at $size',
         (tester) async {
       var fm = 0;
+      var folds = 0;
       Play? opened;
       final liked = Play()
         ..id = 'liked'
@@ -26,6 +27,13 @@ void main() {
               nickname: '测试用户',
               avatar: '',
               liked: liked,
+              playlistFilter: Row(children: [
+                const Expanded(child: Text('合并显示 / QQ音乐 / 网易云')),
+                IconButton(
+                    key: const ValueKey('user-playlists-toggle'),
+                    onPressed: () => folds++,
+                    icon: const Icon(Icons.expand_less)),
+              ]),
               playlists: List.generate(
                   10,
                   (i) => Play()
@@ -66,9 +74,37 @@ void main() {
       expect(tester.getRect(find.text('查看/管理')).right,
           closeTo(lastCard.right, .01));
       expect(lastCard.right, closeTo(size.width - 96 + shift, .01));
+      final fold =
+          tester.getRect(find.byKey(const ValueKey('user-playlists-toggle')));
+      expect(fold.right, closeTo(lastCard.right, .01));
+      expect(fold.right, lessThan(actionRect.left));
+      await tester.tap(find.byKey(const ValueKey('user-playlists-toggle')));
+      expect(folds, 1);
       expect(tester.getCenter(find.byKey(const ValueKey('personal-search'))).dx,
           closeTo(size.width - 45, .01));
       expect(actionRect.width, greaterThanOrEqualTo(48));
+      final daily =
+          tester.getRect(find.byKey(const ValueKey('personal-action:每日')));
+      final cloud =
+          tester.getRect(find.byKey(const ValueKey('personal-action:云盘')));
+      // Keep the full shortcut group below the filter and above the player.
+      expect(daily.top, closeTo(cardRect.top, .01));
+      expect(daily.top, greaterThan(fold.bottom));
+      expect(cloud.bottom, closeTo(size.height - 4, .01));
+      expect(tester.getRect(find.byKey(
+          const ValueKey('personal-action-content:每日'))).top,
+          closeTo(cardRect.top, .01));
+      final podcast =
+          tester.getRect(find.byKey(const ValueKey('personal-action:播客')));
+      expect(actionRect.top - daily.bottom,
+          closeTo(podcast.top - actionRect.bottom, .01));
+      expect(podcast.top - actionRect.bottom,
+          closeTo(cloud.top - podcast.bottom, .01));
+      expect(actionRect.height, greaterThanOrEqualTo(48));
+      for (final title in ['每日', 'FM', '播客', '云盘']) {
+        expect(find.byKey(ValueKey('personal-action:$title')).hitTestable(),
+            findsOneWidget);
+      }
       expect(
           tester.getCenter(find.byKey(const ValueKey('personal-search'))).dx,
           closeTo(

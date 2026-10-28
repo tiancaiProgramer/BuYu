@@ -1,3 +1,6 @@
+import 'common/music/qq_music.dart';
+import 'common/music/qq_discovery_probe.dart';
+import 'common/music/unified_library.dart';
 import 'common/constants/key.dart';
 import 'common/appearance_store.dart';
 import 'common/display_mode.dart';
@@ -174,6 +177,14 @@ Future<void> _initAudioServer(getIt) async {
   getIt.registerSingleton<Box>(await Hive.openBox('cache'));
   await AppearanceStore(getIt<Box>()).migrate();
   await NeteaseMusicApi.init(debug: false);
+  final qq = QqMusic.instance;
+  await qq.restore();
+  if (qq.loggedIn) qq.refreshProfile().catchError((_) {});
+  if (const bool.fromEnvironment('BUYU_DISCOVERY_PROBE')) {
+    runQqDiscoveryProbe(qq);
+  }
+  UnifiedLibrary.instance.refreshFromCloud();
+  if (qq.loggedIn) qq.userPlaylists().catchError((_) => qq.playlists);
   getIt.registerSingleton<BujuanAudioHandler>(await AudioService.init<BujuanAudioHandler>(
     builder: () => BujuanAudioHandler(),
     config: const AudioServiceConfig(
