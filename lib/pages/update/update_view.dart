@@ -13,14 +13,15 @@ class UpdateView extends StatelessWidget {
   Widget build(BuildContext context) {
     final params = context.routeData.queryParams;
     final target = Uri.tryParse(
-        params.getString('downloadUrl', GitHubUpdates.releasesPage));
+        params.getString('downloadUrl', GitHubUpdates.latestReleasePage));
     final page = target != null &&
             (target.toString() == GitHubUpdates.releasesPage ||
+                target.toString() == GitHubUpdates.latestReleasePage ||
                 target
                     .toString()
                     .startsWith('${GitHubUpdates.releasesPage}/tag/'))
         ? target
-        : Uri.parse(GitHubUpdates.releasesPage);
+        : Uri.parse(GitHubUpdates.latestReleasePage);
     return Scaffold(
       appBar: MyAppBar(title: const Text('发现新版本')),
       body: SafeArea(

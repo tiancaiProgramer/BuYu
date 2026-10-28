@@ -49,6 +49,7 @@ class GitHubUpdates {
   final Dio client;
   static const repository = 'https://github.com/tiancaiProgramer/BuYu';
   static const releasesPage = '$repository/releases';
+  static const latestReleasePage = '$releasesPage/latest';
   static const endpoint =
       'https://api.github.com/repos/tiancaiProgramer/BuYu/releases';
 

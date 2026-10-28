@@ -9,7 +9,7 @@ import '../../widget/adaptive_option_sheet.dart';
 import '../../widget/adaptive_wallpaper.dart';
 import 'package:bujuan/common/constants/key.dart';
 import 'package:bujuan/common/display_mode.dart';
-import 'package:bujuan/common/github_updates.dart';
+import 'app_update_tile.dart';
 import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/widget/app_bar.dart';
 import 'package:bujuan/widget/landscape_cards.dart';
@@ -19,10 +19,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:get/get_state_manager/get_state_manager.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../routes/router.dart';
-import '../../routes/router.gr.dart' as app_routes;
 import 'image_blur.dart';
 
 class SettingView extends StatefulWidget {
@@ -46,19 +43,9 @@ enum _PictureAction {
 }
 
 abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
-  PackageInfo? package;
-  bool checking = false;
   bool switchingQuality = false;
   final picker = ImagePicker();
   AppearanceStore get artwork => AppearanceStore(Home.to.box);
-
-  @override
-  void initState() {
-    super.initState();
-    PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => package = info);
-    });
-  }
 
   void message(String text) {
     if (mounted) {
@@ -153,59 +140,6 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
       if (mounted) setState(() {});
     } catch (_) {
       message('文件夹未修改，请重新选择并允许保存');
-    }
-  }
-
-  Future<void> _update() async {
-    if (const bool.fromEnvironment('BUYU_COEXIST')) { message('共存测试版请使用测试安装包更新'); return; }
-    if (checking) return;
-    setState(() => checking = true);
-    try {
-      final installed = package ?? await PackageInfo.fromPlatform();
-      final latest = await GitHubUpdates().latest(tv: DisplayMode.isTv);
-      if (!mounted) return;
-      if (latest == null) {
-        message('GitHub 暂未发布适用于此版本的安装包');
-        return;
-      }
-      final current = AppReleaseVersion(
-          installed.version, int.tryParse(installed.buildNumber) ?? 0);
-      if (latest.version.compareTo(current) > 0) {
-        context.router
-            .push(const app_routes.UpdateView().copyWith(queryParams: {
-          'oldVersion': current.label,
-          'version': latest.version.label,
-          'versionInfo': latest.notes,
-          'downloadUrl': latest.page.toString(),
-        }));
-      } else {
-        message('当前版本无需更新（GitHub 已发布 ${latest.version.label}）');
-      }
-    } catch (_) {
-      if (!mounted) return;
-      await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-                title: const Text('暂时无法检查更新'),
-                content: const Text('可以直接打开你的 GitHub 发布页查看安装包。'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('取消')),
-                  TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        if (!await launchUrl(
-                            Uri.parse(GitHubUpdates.releasesPage),
-                            mode: LaunchMode.externalApplication)) {
-                          message('无法打开 GitHub，请稍后重试');
-                        }
-                      },
-                      child: const Text('打开 GitHub')),
-                ],
-              ));
-    } finally {
-      if (mounted) setState(() => checking = false);
     }
   }
 
@@ -361,19 +295,9 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(TablerIcons.chevron_right, size: 42.w),
               onTap: switchingQuality ? null : _quality),
-          ListTile(
+          AppUpdateTile(
               key: const ValueKey('github-update-setting'),
-              title: Text('检测更新', style: TextStyle(fontSize: 30.sp)),
-              subtitle: const Text('tiancaiProgramer / BuYu'),
-              trailing: checking
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(package == null
-                      ? '…'
-                      : '${package!.version} (${package!.buildNumber})'),
-              onTap: checking ? null : _update),
+              titleStyle: TextStyle(fontSize: 30.sp)),
         ]),
       ]));
 }
