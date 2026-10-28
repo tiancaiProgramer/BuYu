@@ -13,6 +13,9 @@ import '../../widget/app_bar.dart';
 import '../../widget/landscape_cards.dart';
 import '../../widget/simple_extended_image.dart';
 import '../play_list/playlist_view.dart';
+import '../../common/music/music_source.dart';
+import '../music/discovery_sources.dart';
+import '../music/qq_recommendations_view.dart';
 
 class MainView extends GetView<IndexController> {
   const MainView({Key? key}) : super(key: key);
@@ -57,111 +60,116 @@ class MainView extends GetView<IndexController> {
                                 .withOpacity(.9))),
                   ])),
             ),
-      body: !Home.to.landscape && phoneLandscape(context)
-          ? _buildLandscape(context)
-          : Home.to.landscape
-              ? Obx(() => Visibility(
-                    visible: !controller.loading.value,
-                    replacement: const LoadingView(),
-                    child: CustomScrollView(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: _buildHeader('歌单推荐', context),
-                        ),
-                        SliverPadding(
-                          padding: EdgeInsets.symmetric(horizontal: 80.w),
-                          sliver: SliverGrid.builder(
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 6,
-                                      childAspectRatio: .75,
-                                      mainAxisSpacing: 10.0,
-                                      crossAxisSpacing: 10.0),
-                              itemBuilder: (context, index) => _buildItem(
-                                  controller.playlist[index], context),
-                              itemCount: controller.playlist.length,
-                              addAutomaticKeepAlives: false,
-                              addRepaintBoundaries: false),
-                        ),
-                        SliverToBoxAdapter(
-                          child: _buildHeader('新歌推荐', context),
-                        ),
-                        SliverPadding(
-                          padding: EdgeInsets.symmetric(horizontal: 80.w),
-                          sliver: SliverFixedExtentList(
-                              delegate: SliverChildBuilderDelegate(
-                                  (context, index) => SongItemShowImage(
-                                        index: index,
-                                        mediaItem: controller.newSong[index],
-                                        onTap: () {
-                                          Home.to.playByIndex(
-                                              index, 'queueTitle',
-                                              mediaItem: controller.newSong);
-                                        },
-                                      ),
-                                  childCount: controller.newSong.length,
-                                  addAutomaticKeepAlives: false,
-                                  addRepaintBoundaries: false),
-                              itemExtent: 140.w),
-                        ),
-                      ],
-                    ),
-                  ))
-              : Obx(() => Visibility(
-                    visible: !controller.loading.value,
-                    replacement: const LoadingView(),
-                    child: CustomScrollView(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: _buildHeader('歌单推荐', context),
-                        ),
-                        SliverPadding(
-                          padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          sliver: SliverGrid.builder(
-                              gridDelegate: MediaQuery.sizeOf(context).width >
-                                      MediaQuery.sizeOf(context).height
-                                  ? const SliverGridDelegateWithMaxCrossAxisExtent(
-                                      maxCrossAxisExtent: 200,
-                                      childAspectRatio: .75,
-                                      mainAxisSpacing: 10,
-                                      crossAxisSpacing: 10)
-                                  : const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 3,
-                                      childAspectRatio: .75,
-                                      mainAxisSpacing: 10.0,
-                                      crossAxisSpacing: 10.0),
-                              itemBuilder: (context, index) => _buildItem(
-                                  controller.playlist[index], context),
-                              itemCount: controller.playlist.length,
-                              addAutomaticKeepAlives: false,
-                              addRepaintBoundaries: false),
-                        ),
-                        SliverToBoxAdapter(
-                          child: _buildHeader('新歌推荐', context),
-                        ),
-                        SliverPadding(
-                          padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          sliver: SliverFixedExtentList(
-                              delegate: SliverChildBuilderDelegate(
-                                  (context, index) => SongItemShowImage(
-                                        index: index,
-                                        mediaItem: controller.newSong[index],
-                                        onTap: () {
-                                          Home.to.playByIndex(
-                                              index, 'queueTitle',
-                                              mediaItem: controller.newSong);
-                                        },
-                                      ),
-                                  childCount: controller.newSong.length,
-                                  addAutomaticKeepAlives: false,
-                                  addRepaintBoundaries: false),
-                              itemExtent: 140.w),
-                        ),
-                      ],
-                    ),
-                  )),
+      body: DiscoverySources(
+          id: 'home',
+          publicSources: const {MusicSource.netease, MusicSource.qq},
+          netease: _buildNetease,
+          qq: (_) => const QqRecommendationsView()),
     );
   }
+
+  Widget _buildNetease(BuildContext context) => !Home.to.landscape &&
+          phoneLandscape(context)
+      ? _buildLandscape(context)
+      : Home.to.landscape
+          ? Obx(() => Visibility(
+                visible: !controller.loading.value,
+                replacement: const LoadingView(),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _buildHeader('歌单推荐', context),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: 80.w),
+                      sliver: SliverGrid.builder(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 6,
+                                  childAspectRatio: .75,
+                                  mainAxisSpacing: 10.0,
+                                  crossAxisSpacing: 10.0),
+                          itemBuilder: (context, index) =>
+                              _buildItem(controller.playlist[index], context),
+                          itemCount: controller.playlist.length,
+                          addAutomaticKeepAlives: false,
+                          addRepaintBoundaries: false),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _buildHeader('新歌推荐', context),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: 80.w),
+                      sliver: SliverFixedExtentList(
+                          delegate: SliverChildBuilderDelegate(
+                              (context, index) => SongItemShowImage(
+                                    index: index,
+                                    mediaItem: controller.newSong[index],
+                                    onTap: () {
+                                      Home.to.playByIndex(index, 'queueTitle',
+                                          mediaItem: controller.newSong);
+                                    },
+                                  ),
+                              childCount: controller.newSong.length,
+                              addAutomaticKeepAlives: false,
+                              addRepaintBoundaries: false),
+                          itemExtent: 140.w),
+                    ),
+                  ],
+                ),
+              ))
+          : Obx(() => Visibility(
+                visible: !controller.loading.value,
+                replacement: const LoadingView(),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _buildHeader('歌单推荐', context),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                      sliver: SliverGrid.builder(
+                          gridDelegate: MediaQuery.sizeOf(context).width >
+                                  MediaQuery.sizeOf(context).height
+                              ? const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 200,
+                                  childAspectRatio: .75,
+                                  mainAxisSpacing: 10,
+                                  crossAxisSpacing: 10)
+                              : const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  childAspectRatio: .75,
+                                  mainAxisSpacing: 10.0,
+                                  crossAxisSpacing: 10.0),
+                          itemBuilder: (context, index) =>
+                              _buildItem(controller.playlist[index], context),
+                          itemCount: controller.playlist.length,
+                          addAutomaticKeepAlives: false,
+                          addRepaintBoundaries: false),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _buildHeader('新歌推荐', context),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                      sliver: SliverFixedExtentList(
+                          delegate: SliverChildBuilderDelegate(
+                              (context, index) => SongItemShowImage(
+                                    index: index,
+                                    mediaItem: controller.newSong[index],
+                                    onTap: () {
+                                      Home.to.playByIndex(index, 'queueTitle',
+                                          mediaItem: controller.newSong);
+                                    },
+                                  ),
+                              childCount: controller.newSong.length,
+                              addAutomaticKeepAlives: false,
+                              addRepaintBoundaries: false),
+                          itemExtent: 140.w),
+                    ),
+                  ],
+                ),
+              ));
 
   Widget _buildLandscape(BuildContext context) => Obx(() => Visibility(
       visible: !controller.loading.value,

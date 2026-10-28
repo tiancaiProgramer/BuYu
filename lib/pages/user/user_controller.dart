@@ -134,14 +134,17 @@ class UserController extends GetxController {
         user?.getUserPlayList();
         user?._getUserLikeSongIds();
         return true;
-      } else {
+      } else if (neteaseAccountInfoWrap.code == 301 ||
+          neteaseAccountInfoWrap.code == 200) {
         if (Home.to.loginStatus.value == LoginStatus.login)
           WidgetUtil.showToast('登录失效,请重新登录');
         Home.to.loginStatus.value = LoginStatus.noLogin;
+      } else {
+        WidgetUtil.showToast('账号资料暂不可用，请稍后重试');
       }
     } catch (e) {
       if (request != _accountRequest || user?.isClosed == true) return false;
-      Home.to.loginStatus.value = LoginStatus.noLogin;
+      // A transport failure is not evidence that an existing session expired.
       WidgetUtil.showToast('获取用户资料失败，请检查网络');
     }
     return false;

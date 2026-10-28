@@ -53,6 +53,16 @@ class SourcePlaylist {
   final int count;
 }
 
+/// Membership is independent of playable metadata (e.g. unavailable songs).
+class FavoritesSnapshot {
+  FavoritesSnapshot(this.songs,
+      {required this.playlistExists, Set<String>? keys})
+      : keys = keys ?? songs.map(sourceKey).toSet();
+  final List<MediaItem> songs;
+  final Set<String> keys;
+  final bool playlistExists;
+}
+
 class MusicServiceError implements Exception {
   const MusicServiceError(this.message);
   final String message;

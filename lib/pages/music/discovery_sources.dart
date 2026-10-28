@@ -8,16 +8,18 @@ import '../home/home_controller.dart';
 import '../login/login.dart';
 import '../user/user_controller.dart';
 
-/// A shared platform selector inside the existing daily and podcast pages.
+/// A shared platform selector for discovery, daily songs and podcasts.
 class DiscoverySources extends StatefulWidget {
   const DiscoverySources(
       {super.key,
       required this.id,
       required this.netease,
       required this.qq,
+      this.publicSources = const {},
       this.statusReader});
   final String id;
   final WidgetBuilder netease, qq;
+  final Set<MusicSource> publicSources;
   final bool Function(MusicSource)? statusReader;
   @override
   State<DiscoverySources> createState() => _DiscoverySourcesState();
@@ -32,10 +34,12 @@ class _DiscoverySourcesState extends State<DiscoverySources> {
           ? QqMusic.instance.loggedIn
           : Get.isRegistered<Home>() &&
               Home.to.loginStatus.value == LoginStatus.login);
+  bool available(MusicSource source) =>
+      widget.publicSources.contains(source) || signedIn(source);
   void accountsChanged() {
     if (!mounted) return;
     setState(() {
-      if (!signedIn(_source) && signedIn(other)) _source = other;
+      if (!available(_source) && signedIn(other)) _source = other;
     });
   }
 
@@ -47,7 +51,7 @@ class _DiscoverySourcesState extends State<DiscoverySources> {
     if (Get.isRegistered<Home>()) {
       final saved = Home.to.box.get('DISCOVERY_SOURCE_${widget.id}');
       _source = MusicSource.values.firstWhere(
-          (s) => s.name == saved && signedIn(s),
+          (s) => s.name == saved && available(s),
           orElse: () =>
               signedIn(MusicSource.netease) || !signedIn(MusicSource.qq)
                   ? MusicSource.netease
@@ -86,8 +90,8 @@ class _DiscoverySourcesState extends State<DiscoverySources> {
         Expanded(
             child: KeyedSubtree(
                 key: ValueKey(
-                    '${widget.id}:${_source.name}:${signedIn(_source)}'),
-                child: signedIn(_source)
+                    '${widget.id}:${_source.name}:${signedIn(_source)}:${_source == MusicSource.qq ? QqMusic.instance.account : ''}'),
+                child: available(_source)
                     ? (_source == MusicSource.qq
                         ? widget.qq(context)
                         : widget.netease(context))

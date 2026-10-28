@@ -113,13 +113,17 @@ class NeteaseLibrary {
             'mv': value.mv,
             'fee': value.fee
           });
-  Future<List<MediaItem>> favorites() async {
+  Future<List<MediaItem>> favorites() async =>
+      (await favoritesSnapshot()).songs;
+
+  Future<FavoritesSnapshot> favoritesSnapshot() async {
     final bound = account;
     final selected = (await lists())
         .where(
             (p) => owns(p) && (p.name ?? '').trim().toLowerCase() == 'buyu收藏')
         .toList();
     final songs = <String, MediaItem>{};
+    final membership = <String>{};
     for (final list in selected) {
       final result = await api.playListDetail(list.id);
       checkAccount(bound);
@@ -130,6 +134,10 @@ class NeteaseLibrary {
         if (result.playlist!.trackCount == 0) continue;
         throw const MusicServiceError('网易云未返回完整收藏编号，请重试');
       }
+      if (ids.toSet().length < (result.playlist!.trackCount ?? 0)) {
+        throw const MusicServiceError('网易云收藏编号尚未完整读取，请重试');
+      }
+      membership.addAll(ids.map((id) => 'netease:$id'));
       for (var start = 0; start < ids.length; start += 200) {
         final end = (start + 200).clamp(0, ids.length);
         final detail = await api.songDetail(ids.sublist(start, end));
@@ -142,6 +150,7 @@ class NeteaseLibrary {
         }
       }
     }
-    return songs.values.toList();
+    return FavoritesSnapshot(songs.values.toList(),
+        playlistExists: selected.isNotEmpty, keys: membership);
   }
 }

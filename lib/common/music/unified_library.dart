@@ -21,11 +21,21 @@ abstract class FavoritesReader {
   Future<List<MediaItem>> readFavorites();
 }
 
-class NeteaseFavoritesRemote implements FavoritesRemote, FavoritesReader {
-  NeteaseFavoritesRemote(this.box);
+abstract class FavoritesSnapshotReader implements FavoritesReader {
+  Future<FavoritesSnapshot> readSnapshot();
+}
+
+class NeteaseFavoritesRemote
+    implements FavoritesRemote, FavoritesSnapshotReader {
+  NeteaseFavoritesRemote(this.box, {NeteaseMusicApi? api}) : _providedApi = api;
   final Box box;
+  final NeteaseMusicApi? _providedApi;
+  NeteaseMusicApi get api => _providedApi ?? NeteaseMusicApi();
   @override
-  Future<List<MediaItem>> readFavorites() => NeteaseLibrary(box).favorites();
+  Future<FavoritesSnapshot> readSnapshot() =>
+      NeteaseLibrary(box, api: api).favoritesSnapshot();
+  @override
+  Future<List<MediaItem>> readFavorites() async => (await readSnapshot()).songs;
   @override
   String get account {
     try {
@@ -40,22 +50,16 @@ class NeteaseFavoritesRemote implements FavoritesRemote, FavoritesReader {
   @override
   Future<SourcePlaylist> ensurePlaylist() async {
     if (account.isEmpty) throw const MusicServiceError('请先登录网易云');
-    final items = <dynamic>[];
-    for (var offset = 0; offset < 10000; offset += 100) {
-      final result = await NeteaseMusicApi()
-          .userPlayList(account, offset: offset, limit: 100);
-      if (result.code != 200)
-        throw const MusicServiceError('网易云歌单读取失败，请重新登录或重试');
-      final page = result.playlist ?? [];
-      items.addAll(page);
-      if (page.length < 100) break;
-    }
+    final bound = account;
+    final items = await NeteaseLibrary(box, api: api).lists();
     for (final p in items) {
-      if (p.name == 'BuYu收藏' && p.creator?.userId == account)
+      if ((p.name ?? '').trim().toLowerCase() == 'buyu收藏' &&
+          (p.creator?.userId ?? p.userId) == bound)
         return SourcePlaylist(
             source: MusicSource.netease, id: p.id, name: 'BuYu收藏');
     }
-    final created = await NeteaseMusicApi().playlistCreate('BuYu收藏', true);
+    final created = await api.playlistCreate('BuYu收藏', true);
+    if (account != bound) throw const MusicServiceError('网易云账号已切换');
     if (created.code != 200 || created.id.isEmpty)
       throw const MusicServiceError('网易云收藏歌单创建失败');
     return SourcePlaylist(
@@ -64,19 +68,35 @@ class NeteaseFavoritesRemote implements FavoritesRemote, FavoritesReader {
 
   @override
   Future<void> apply(SourcePlaylist list, MediaItem song, bool add) async {
-    final result =
-        await NeteaseMusicApi().playlistManipulateTracks(list.id, song.id, add);
+    final bound = account;
+    if (bound.isEmpty) throw const MusicServiceError('请先登录网易云');
+    final result = await api.playlistManipulateTracks(list.id, song.id, add);
     // 502 is the documented "already exists" response for this operation.
     if (result.code != 200 && !(add && result.code == 502))
       throw const MusicServiceError('网易云收藏同步失败，请检查登录后重试');
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final detail = await api.playListDetail(list.id);
+      if (account != bound) throw const MusicServiceError('网易云账号已切换');
+      final ids = detail.playlist?.trackIds;
+      final complete =
+          ids != null && ids.length >= (detail.playlist?.trackCount ?? 0);
+      if (detail.code == 200 &&
+          complete &&
+          ids.any((id) => id.id == song.id) == add) return;
+      if (attempt == 0)
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+    }
+    throw const MusicServiceError('网易云尚未确认收藏变更，已保留待同步记录');
   }
 }
 
-class QqFavoritesRemote implements FavoritesRemote, FavoritesReader {
+class QqFavoritesRemote implements FavoritesRemote, FavoritesSnapshotReader {
   QqFavoritesRemote(this.qq);
   final QqMusic qq;
   @override
-  Future<List<MediaItem>> readFavorites() async {
+  Future<List<MediaItem>> readFavorites() async => (await readSnapshot()).songs;
+  @override
+  Future<FavoritesSnapshot> readSnapshot() async {
     final bound = account;
     if (bound.isEmpty) throw const MusicServiceError('请先登录QQ音乐');
     final lists = (await qq.userPlaylists())
@@ -85,18 +105,25 @@ class QqFavoritesRemote implements FavoritesRemote, FavoritesReader {
     final songs = <String, MediaItem>{};
     for (final list in lists) {
       var ended = false;
+      final membership = <String>{};
       for (var page = 1; page <= 100; page++) {
         final items = await qq.playlistSongs(list, page: page);
         if (account != bound) throw const MusicServiceError('QQ账号已切换，请重新读取收藏');
-        for (final song in items) songs[sourceKey(song)] = song;
+        for (final song in items) {
+          songs[sourceKey(song)] = song;
+          membership.add(sourceKey(song));
+        }
         if (items.length < 100) {
           ended = true;
           break;
         }
       }
-      if (!ended) throw const MusicServiceError('QQ收藏尚未完整读取，请重试');
+      if (!ended || membership.length < list.count)
+        throw const MusicServiceError('QQ收藏尚未完整读取，请重试');
     }
-    return songs.values.toList();
+    if (account != bound) throw const MusicServiceError('QQ账号已切换，请重新读取收藏');
+    return FavoritesSnapshot(songs.values.toList(),
+        playlistExists: lists.isNotEmpty);
   }
 
   @override
@@ -143,7 +170,7 @@ class FavoriteEntry {
   }
 }
 
-/// Local collection is authoritative. Tombstones survive failed removals/restarts.
+/// Pending local operations win; complete snapshots reconcile cloud changes.
 class UnifiedLibrary extends ChangeNotifier {
   UnifiedLibrary(this.box, {Map<MusicSource, FavoritesRemote>? remotes})
       : remotes = remotes ??
@@ -173,9 +200,36 @@ class UnifiedLibrary extends ChangeNotifier {
   final Map<MusicSource, FavoritesRemote> remotes;
   final Map<String, FavoriteEntry> entries = {};
   Future<void>? _running;
+  final Map<MusicSource, Future<void>> _sourceRuns = {};
   bool _disposed = false;
   bool _again = false;
   Future<void>? _pulling;
+  Future<void>? _reconciling;
+  DateTime? lastCheckedAt;
+  bool get hasRetryableWork =>
+      readErrors.keys.any((s) => remotes[s]!.account.isNotEmpty) ||
+      entries.values.any((entry) {
+        final account = remotes[sourceOf(entry.song)]!.account;
+        return entry.pending &&
+            account.isNotEmpty &&
+            (entry.owner.isEmpty || entry.owner == account);
+      });
+
+  Future<void> reconcile() => _reconciling ??= _reconcile();
+  Future<void> _reconcile() async {
+    // Assign before the first notification, and always clear after completion.
+    await Future<void>.value();
+    try {
+      if (_disposed) return;
+      await refreshFromCloud();
+      if (!_disposed) await sync();
+      lastCheckedAt = DateTime.now();
+    } finally {
+      _reconciling = null;
+      _notify();
+    }
+  }
+
   bool get refreshing => _pulling != null;
   final Map<MusicSource, String> readErrors = {};
   Future<void> refreshFromCloud() {
@@ -191,7 +245,20 @@ class UnifiedLibrary extends ChangeNotifier {
           readErrors.remove(source);
           if (bound.isEmpty || remote is! FavoritesReader) return;
           try {
-            final songs = await (remote as FavoritesReader).readFavorites();
+            final before = entries.map((key, value) => MapEntry(key, (
+                  entry: value,
+                  revision: value.revision,
+                  pending: value.pending
+                )));
+            final snapshot = remote is FavoritesSnapshotReader
+                ? await (remote as FavoritesSnapshotReader)
+                    .readSnapshot()
+                    .timeout(const Duration(seconds: 90))
+                : null;
+            final songs = snapshot?.songs ??
+                await (remote as FavoritesReader)
+                    .readFavorites()
+                    .timeout(const Duration(seconds: 90));
             if (remote.account != bound || _disposed)
               throw const MusicServiceError('账号已切换，忽略旧收藏数据');
             final inserted = <String, FavoriteEntry>{};
@@ -199,6 +266,9 @@ class UnifiedLibrary extends ChangeNotifier {
             for (final song in songs) {
               if (sourceOf(song) != source) continue;
               final key = sourceKey(song), prior = entries[sourceKey(song)];
+              final captured = before[key];
+              if (!identical(prior, captured?.entry) ||
+                  captured?.pending == true) continue;
               // A user's queued add/remove and a different account always win over a cloud read.
               if (prior != null &&
                   (prior.pending ||
@@ -209,6 +279,38 @@ class UnifiedLibrary extends ChangeNotifier {
               previous[key] = prior;
               inserted[key] = entry;
               entries[key] = entry;
+            }
+            if (snapshot != null) {
+              for (final item in before.entries) {
+                final prior = entries[item.key], captured = item.value;
+                if (prior == null ||
+                    !identical(prior, captured.entry) ||
+                    captured.pending ||
+                    prior.pending ||
+                    prior.revision != captured.revision ||
+                    !prior.selected ||
+                    sourceOf(prior.song) != source ||
+                    prior.owner != bound) continue;
+                FavoriteEntry? replacement;
+                if (!snapshot.playlistExists) {
+                  // A missing entire playlist is repaired, never interpreted as mass deletion.
+                  replacement = FavoriteEntry(prior.song,
+                      owner: bound,
+                      revision: prior.revision + 1,
+                      synced: prior.synced);
+                } else if (!snapshot.keys.contains(item.key)) {
+                  replacement = FavoriteEntry(prior.song,
+                      selected: false,
+                      owner: bound,
+                      revision: prior.revision,
+                      synced: prior.synced);
+                }
+                if (replacement != null) {
+                  previous[item.key] = prior;
+                  inserted[item.key] = replacement;
+                  entries[item.key] = replacement;
+                }
+              }
             }
             try {
               await _persist();
@@ -228,7 +330,7 @@ class UnifiedLibrary extends ChangeNotifier {
           } catch (e) {
             readErrors[source] = e is MusicServiceError
                 ? e.message
-                : '${source.label}收藏读取失败，点刷新重试';
+                : '${source.label}收藏读取失败，将自动重试';
           }
           _notify();
         }));
@@ -292,6 +394,8 @@ class UnifiedLibrary extends ChangeNotifier {
   Future<void> sync() {
     if (_running != null) {
       _again = true;
+      // A slow source must not hold up a new operation on the other platform.
+      unawaited(_sync());
       return _running!;
     }
     final done = Completer<void>();
@@ -305,7 +409,7 @@ class UnifiedLibrary extends ChangeNotifier {
         } while (_again && !_disposed);
       } catch (_) {
         for (final entry in entries.values.where((e) => e.pending)) {
-          entry.error = '收藏同步中断，请检查存储空间后重试';
+          entry.error = '收藏同步中断，将自动重试；请检查存储空间';
         }
       } finally {
         _running = null;
@@ -317,51 +421,97 @@ class UnifiedLibrary extends ChangeNotifier {
   }
 
   Future<void> _sync() async {
-    for (final source in MusicSource.values) {
-      final remote = remotes[source]!;
-      final account = remote.account;
-      final pending = entries.values
-          .where((e) => sourceOf(e.song) == source && e.pending)
-          .toList();
-      if (pending.isEmpty) continue;
-      if (account.isEmpty) {
-        for (final e in pending) e.error = '等待登录${source.label}';
-        _notify();
-        continue;
-      }
-      SourcePlaylist? playlist;
-      for (final captured in pending) {
-        var entry = entries[sourceKey(captured.song)];
-        while (entry != null && entry.pending && !_disposed) {
-          if (remote.account != account) break;
-          if (entry.owner.isNotEmpty && entry.owner != account) {
-            entry.error = '属于其他${source.label}账号，未同步';
-            break;
-          }
-          entry.owner = account;
-          await _persist();
-          final revision = entry.revision;
-          final selected = entry.selected;
-          try {
-            playlist ??= await remote.ensurePlaylist();
-            if (remote.account != account)
-              throw const MusicServiceError('账号已切换，请使用原账号重试');
-            await remote.apply(playlist, entry.song, selected);
-            final latest = entries[sourceKey(entry.song)];
-            if (identical(latest, entry) && latest!.revision == revision) {
-              entry.synced = revision;
-              entry.error = null;
-            }
-          } catch (error) {
-            entry.error = error is MusicServiceError
-                ? error.message
-                : '${source.label}同步失败，点同步重试';
-            break;
-          }
-          await _persist();
-          _notify();
-          entry = entries[sourceKey(captured.song)];
+    await Future.wait(MusicSource.values.map(_startSource));
+  }
+
+  Future<void> _startSource(MusicSource source) {
+    if (_sourceRuns.containsKey(source)) return _sourceRuns[source]!;
+    final done = Completer<void>();
+    _sourceRuns[source] = done.future;
+    () async {
+      try {
+        await _syncSource(source);
+      } catch (_) {
+        for (final entry in entries.values
+            .where((e) => sourceOf(e.song) == source && e.pending)) {
+          entry.error = '${source.label}同步中断，将自动重试';
         }
+      } finally {
+        _sourceRuns.remove(source);
+        _notify();
+        done.complete();
+      }
+    }();
+    return done.future;
+  }
+
+  Future<void> _syncSource(MusicSource source) async {
+    final remote = remotes[source]!;
+    final account = remote.account;
+    final pending = entries.values
+        .where((e) => sourceOf(e.song) == source && e.pending)
+        .toList();
+    if (pending.isEmpty) return;
+    if (account.isEmpty) {
+      for (final e in pending) e.error = '等待登录${source.label}';
+      _notify();
+      return;
+    }
+    final eligible = pending.where((entry) {
+      if (entry.owner.isNotEmpty && entry.owner != account) {
+        entry.error = '属于其他${source.label}账号，未同步';
+        return false;
+      }
+      entry.owner = account;
+      return true;
+    }).toList();
+    if (eligible.isEmpty) return;
+    await _persist();
+    if (_disposed || remote.account != account) return;
+    // Resolve once per source, including failures; do not repeat a failed
+    // playlist lookup once for every pending song while offline.
+    final playlist =
+        await remote.ensurePlaylist().timeout(const Duration(seconds: 60));
+    for (final captured in eligible) {
+      var entry = entries[sourceKey(captured.song)];
+      while (entry != null && entry.pending && !_disposed) {
+        if (remote.account != account) break;
+        if (entry.owner.isNotEmpty && entry.owner != account) {
+          entry.error = '属于其他${source.label}账号，未同步';
+          break;
+        }
+        entry.owner = account;
+        await _persist();
+        final revision = entry.revision;
+        final selected = entry.selected;
+        try {
+          if (remote.account != account)
+            throw const MusicServiceError('账号已切换，请使用原账号重试');
+          await remote
+              .apply(playlist, entry.song, selected)
+              .timeout(const Duration(seconds: 90));
+          if (remote.account != account)
+            throw const MusicServiceError('账号已切换，请使用原账号重试');
+          final latest = entries[sourceKey(entry.song)];
+          if (identical(latest, entry) && latest!.revision == revision) {
+            final previousSynced = entry.synced;
+            entry.synced = revision;
+            try {
+              await _persist();
+              entry.error = null;
+            } catch (_) {
+              entry.synced = previousSynced;
+              rethrow;
+            }
+          }
+        } catch (error) {
+          entry.error = error is MusicServiceError
+              ? error.message
+              : '${source.label}同步失败，将自动重试';
+          break;
+        }
+        _notify();
+        entry = entries[sourceKey(captured.song)];
       }
     }
   }

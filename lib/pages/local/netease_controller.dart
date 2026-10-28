@@ -10,6 +10,7 @@ import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../common/constants/enmu.dart';
+import 'cache_directory.dart';
 
 class Netease extends GetxController {
   final String appPath = '/Android/data/com.sixbugs.bujuan/files';
@@ -71,8 +72,8 @@ Future<List<CacheDate>> getCache(RootIsolateToken rootIsolateToken) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
   Directory? directoryApp = await getExternalStorageDirectory();
   if (directoryApp != null) {
-    String replacePath = directoryApp.path
-        .replaceAll('/Android/data/com.sixbugs.bujuan/files', '');
+    final replacePath = cacheStorageRoot(directoryApp.path);
+    if (replacePath == null) return [];
     Directory directoryNetease =
         Directory('$replacePath/netease/cloudmusic/Cache/Music1');
     if (!await directoryNetease.exists()) return [];

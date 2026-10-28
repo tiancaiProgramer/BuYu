@@ -13,9 +13,11 @@ import '../home/home_controller.dart';
 import '../play_list/playlist_view.dart';
 
 class MixedLibraryView extends StatefulWidget {
-  const MixedLibraryView({super.key, this.playlist, this.folderId});
+  const MixedLibraryView(
+      {super.key, this.playlist, this.folderId, this.readOnly = false});
   final String? folderId;
   final SourcePlaylist? playlist;
+  final bool readOnly;
   @override
   State<MixedLibraryView> createState() => _MixedLibraryViewState();
 }
@@ -34,7 +36,7 @@ class _MixedLibraryViewState extends State<MixedLibraryView> {
     if (widget.playlist != null) {
       load();
     } else if (widget.folderId == null) {
-      library.refreshFromCloud();
+      library.reconcile();
     }
   }
 
@@ -105,8 +107,7 @@ class _MixedLibraryViewState extends State<MixedLibraryView> {
                             ? null
                             : () async {
                                 await QqMusic.instance.restore();
-                                await library.refreshFromCloud();
-                                await library.sync();
+                                await library.reconcile();
                               })
                 ]),
             body: SafeArea(
@@ -140,8 +141,8 @@ class _MixedLibraryViewState extends State<MixedLibraryView> {
                             : library.syncing
                                 ? '正在同步收藏…'
                                 : library.pendingCount > 0
-                                    ? '本地已保存 · ${library.pendingCount} 项等待同步，点右上角重试'
-                                    : '聚合收藏 · 网易云 / QQ音乐 BuYu收藏')),
+                                    ? '本地已保存 · ${library.pendingCount} 项等待同步，登录有效的账号将自动重试'
+                                    : '自动同步 · 网易云 / QQ音乐 BuYu收藏')),
                   if (widget.playlist == null &&
                       widget.folderId == null &&
                       library.refreshing)
@@ -183,6 +184,7 @@ class _MixedLibraryViewState extends State<MixedLibraryView> {
                                                   mediaItem: songs))),
                                       if (folder != null ||
                                           widget.playlist != null &&
+                                              !widget.readOnly &&
                                               QqMusic.instance.editablePlaylist(
                                                   widget.playlist!))
                                         IconButton(

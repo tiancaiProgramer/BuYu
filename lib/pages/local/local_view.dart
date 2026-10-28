@@ -2,11 +2,10 @@ import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/routes/router.gr.dart';
 import 'package:bujuan/widget/data_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
-import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
-import 'package:get/get_state_manager/src/simple/get_view.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -18,8 +17,16 @@ import '../home/home_controller.dart';
 import 'local_controller.dart';
 import '../downloads/downloads_view.dart';
 
-class LocalView extends GetView<Local> {
+class LocalView extends StatefulWidget {
   const LocalView({super.key});
+
+  @override
+  State<LocalView> createState() => _LocalViewState();
+}
+
+class _LocalViewState extends State<LocalView> {
+  Local get controller => Get.find<Local>();
+  bool _openingCache = false;
 
   @override
   Widget build(BuildContext context) {
@@ -70,25 +77,15 @@ class LocalView extends GetView<Local> {
                             onTap: () => context.router.push(
                                 const LocalSongView().copyWith(
                                     queryParams: {'id': 0, 'type': 'all'}))),
-                        _buildTopWidget(
-                            '网易云缓存歌曲',
-                            'assets/images/netease_cache.svg',
-                            context, onTap: () async {
-                          var status =
-                              await Permission.manageExternalStorage.status;
-                          if (!status.isGranted) {
-                            status = await Permission.manageExternalStorage
-                                .request();
-                            if (status.isGranted) {
-                              if (context.mounted)
-                                context.router.push(const NeteaseCacheView());
-                            }
-                          } else {
-                            if (context.mounted)
-                              context.router.push(const NeteaseCacheView());
-                          }
-                        }),
-                        ListTile(leading: const Icon(Icons.download_outlined), title: const Text('下载管理'), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsView()))),
+                        _buildTopWidget('网易云缓存歌曲',
+                            'assets/images/netease_cache.svg', context,
+                            onTap: () => _openCache(context)),
+                        ListTile(
+                            leading: const Icon(Icons.download_outlined),
+                            title: const Text('下载管理'),
+                            onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const DownloadsView()))),
                         _buildHeader('本地歌手', context,
                             onTap: () => context.router
                                 .push(LocalAr(artists: controller.artistsAll))),
@@ -105,11 +102,60 @@ class LocalView extends GetView<Local> {
   }
 
   Future<void> _openCache(BuildContext context) async {
-    var status = await Permission.manageExternalStorage.status;
-    if (!status.isGranted)
-      status = await Permission.manageExternalStorage.request();
-    if (status.isGranted && context.mounted) {
-      context.router.push(const NeteaseCacheView());
+    if (_openingCache) return;
+    _openingCache = true;
+    void message(String text) {
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(text),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+                label: '重新授权', onPressed: () => _openCache(context))));
+    }
+
+    try {
+      final sdk = await const MethodChannel('bujuan/downloads')
+          .invokeMethod<int>('sdk');
+      if (sdk == null) throw StateError('Storage access is unavailable');
+      final permission =
+          sdk >= 30 ? Permission.manageExternalStorage : Permission.storage;
+      if (!await permission.isGranted) {
+        if (!mounted || !context.mounted) return;
+        final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialog) => AlertDialog(
+                    scrollable: true,
+                    title: const Text('读取网易云缓存'),
+                    content: Text(sdk >= 30
+                        ? '读取共享存储中的网易云缓存，需要在系统设置中开启 BuYu 的“所有文件访问权限”。开启后返回本页即可继续。\n\n普通歌曲下载和播放不需要此权限；部分受系统保护的缓存目录仍可能无法读取。'
+                        : '读取网易云缓存需要文件读取权限。授权后即可继续，取消不会影响在线播放。'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialog, false),
+                          child: const Text('暂不开启')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialog, true),
+                          child: Text(sdk >= 30 ? '前往授权' : '允许读取')),
+                    ]));
+        if (confirmed != true || !mounted || !context.mounted) return;
+        await permission.request();
+        if (!mounted || !context.mounted) return;
+        // Special permission settings can return without enabling access.
+        // Read the current state again instead of treating the return as consent.
+        if (!await permission.isGranted) {
+          message('尚未开启文件访问权限，暂时无法读取网易云缓存');
+          return;
+        }
+      }
+      if (mounted && context.mounted) {
+        await context.router.push(const NeteaseCacheView());
+      }
+    } catch (_) {
+      message('无法完成文件访问授权，请检查系统设置后重试');
+    } finally {
+      _openingCache = false;
     }
   }
 
@@ -119,7 +165,11 @@ class LocalView extends GetView<Local> {
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: landscapeCardGrid,
             children: [
-              LandscapeCard(title: '下载管理', artwork: const Icon(Icons.download_outlined, size: 32), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsView()))),
+              LandscapeCard(
+                  title: '下载管理',
+                  artwork: const Icon(Icons.download_outlined, size: 32),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const DownloadsView()))),
               LandscapeCard(
                   title: '本地SDCard歌曲',
                   artwork: SvgPicture.asset('assets/images/local_song.svg'),

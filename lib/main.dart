@@ -1,6 +1,7 @@
 import 'common/music/qq_music.dart';
 import 'common/music/qq_discovery_probe.dart';
 import 'common/music/unified_library.dart';
+import 'common/music/favorites_auto_sync.dart';
 import 'common/constants/key.dart';
 import 'common/appearance_store.dart';
 import 'common/display_mode.dart';
@@ -183,7 +184,9 @@ Future<void> _initAudioServer(getIt) async {
   if (const bool.fromEnvironment('BUYU_DISCOVERY_PROBE')) {
     runQqDiscoveryProbe(qq);
   }
-  UnifiedLibrary.instance.refreshFromCloud();
+  final favoritesSync = FavoritesAutoSync(UnifiedLibrary.instance);
+  getIt.registerSingleton<FavoritesAutoSync>(favoritesSync, dispose: (sync) => sync.dispose());
+  favoritesSync.start();
   if (qq.loggedIn) qq.userPlaylists().catchError((_) => qq.playlists);
   getIt.registerSingleton<BujuanAudioHandler>(await AudioService.init<BujuanAudioHandler>(
     builder: () => BujuanAudioHandler(),

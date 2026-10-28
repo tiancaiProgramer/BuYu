@@ -13,6 +13,14 @@ class QqPodcast {
   final String id, name, image, author;
 }
 
+class QqPlaylistPage {
+  const QqPlaylistPage(this.playlists,
+      {required this.nextOffset, required this.hasMore});
+  final List<SourcePlaylist> playlists;
+  final int nextOffset;
+  final bool hasMore;
+}
+
 /// QQ discovery uses the same account and playback transport as its library.
 class QqDiscovery {
   QqDiscovery(this.qq);
@@ -20,6 +28,64 @@ class QqDiscovery {
   String _dailyAccount = '', _dailyDate = '';
   List<MediaItem> _daily = [];
   bool podcastsHaveMore = false;
+
+  /// Public playlist recommendations, distinct from a user's daily song list.
+  Future<QqPlaylistPage> recommendedPlaylists(
+      {int offset = 0, CancelToken? cancelToken}) async {
+    if (offset < 0) throw ArgumentError.value(offset, 'offset');
+    await qq.restore();
+    final account = qq.account;
+    final data = await qq.rpc('music.playlist.PlaylistSquare',
+        'GetRecommendFeed', {'From': offset, 'Size': 20},
+        expectedAccount: account, cancelToken: cancelToken);
+    if (qq.account != account) throw const MusicServiceError('QQ账号已切换，请刷新推荐歌单');
+    final raw = data['List'];
+    if (raw is! List) throw const MusicServiceError('QQ音乐未返回推荐歌单，请重试');
+    final result = <SourcePlaylist>[];
+    final ids = <String>{};
+    for (final item in raw.whereType<Map>()) {
+      final playlist = item['Playlist'];
+      final basic = playlist is Map ? playlist['basic'] : null;
+      if (basic is! Map) continue;
+      final id = '${basic['tid'] ?? ''}';
+      if ((BigInt.tryParse(id) ?? BigInt.zero) <= BigInt.zero || !ids.add(id)) {
+        continue;
+      }
+      final cover = basic['cover'];
+      var image = '';
+      if (cover is Map) {
+        for (final field in ['medium_url', 'default_url', 'small_url']) {
+          var candidate = '${cover[field] ?? ''}'.trim();
+          if (candidate.startsWith('//')) candidate = 'https:$candidate';
+          final uri = Uri.tryParse(candidate);
+          if (uri != null &&
+              uri.host.isNotEmpty &&
+              ['http', 'https'].contains(uri.scheme)) {
+            image = uri.replace(scheme: 'https').toString();
+            break;
+          }
+        }
+      }
+      result.add(SourcePlaylist(
+          source: MusicSource.qq,
+          id: id,
+          directory: '${basic['dirid'] ?? ''}',
+          name: QqMusic.clean(basic['title']),
+          image: image,
+          count: (basic['song_cnt'] as num? ?? 0).toInt()));
+    }
+    if (raw.isNotEmpty && result.isEmpty) {
+      throw const MusicServiceError('QQ音乐推荐歌单格式异常，请重试');
+    }
+    final next = offset + raw.length;
+    final limit = (data['FromLimit'] as num?)?.toInt();
+    return QqPlaylistPage(result,
+        nextOffset: next,
+        hasMore: raw.isNotEmpty &&
+            data['HasMore'] == true &&
+            (limit == null || limit <= 0 || next < limit));
+  }
+
   void _check(String account) {
     if (!qq.loggedIn || qq.account != account) {
       throw const MusicServiceError('QQ音乐账号已切换，请重新加载');

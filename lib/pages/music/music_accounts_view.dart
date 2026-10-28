@@ -64,26 +64,29 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
         context: context,
         isScrollControlled: true,
         builder: (sheet) => AdaptiveOptionSheet(title: '主页头像来源', children: [
-          for (final item in sources)
-            RadioListTile<MusicSource>(
-                key: ValueKey('profile-source:${item.name}'),
-                title: Text(item.label),
-                secondary: SimpleExtendedImage.avatar(
-                    item == MusicSource.qq ? qq.avatarUrl
-                        : home.userData.value.profile?.avatarUrl ?? '',
-                    width: 36, height: 36),
-                value: item,
-                toggleable: true,
-                groupValue: home.displayProfileSource,
-                onChanged: (_) => Navigator.pop(sheet, item)),
-        ]));
+              for (final item in sources)
+                RadioListTile<MusicSource>(
+                    key: ValueKey('profile-source:${item.name}'),
+                    title: Text(item.label),
+                    secondary: SimpleExtendedImage.avatar(
+                        item == MusicSource.qq
+                            ? qq.avatarUrl
+                            : home.userData.value.profile?.avatarUrl ?? '',
+                        width: 36,
+                        height: 36),
+                    value: item,
+                    toggleable: true,
+                    groupValue: home.displayProfileSource,
+                    onChanged: (_) => Navigator.pop(sheet, item)),
+            ]));
     if (source == null || !mounted) return;
     try {
       await home.setDisplayProfileSource(source);
       if (mounted) setState(() {});
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('头像来源保存失败，请重试')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('头像来源保存失败，请重试')));
     }
   }
 
@@ -119,8 +122,8 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                       onTap: busy
                           ? null
                           : () async {
-                              await libraryAction(
-                                  context, () => UserController.signOutNetease(),
+                              await libraryAction(context,
+                                  () => UserController.signOutNetease(),
                                   success: '已退出网易云登录');
                               if (mounted) setState(() {});
                             }),
@@ -155,7 +158,9 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                   ListTile(
                       key: const ValueKey('profile-source-setting'),
                       leading: SimpleExtendedImage.avatar(
-                          Home.to.displayAvatarUrl, width: 40, height: 40),
+                          Home.to.displayAvatarUrl,
+                          width: 40,
+                          height: 40),
                       title: const Text('主页头像来源'),
                       subtitle: Text(Home.to.displayProfileSource?.label ?? ''),
                       trailing: const Icon(TablerIcons.chevron_right),
@@ -176,14 +181,14 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                 ListTile(
                     leading: const Icon(TablerIcons.cloud_download),
                     title: const Text('读取两平台BuYu收藏'),
-                    subtitle: const Text('合并网易云与QQ音乐云端收藏，保留本地分类'),
+                    subtitle: const Text('打开App及回到前台会自动核对，也可立即读取'),
                     onTap: () => libraryAction(context,
                         () => UnifiedLibrary.instance.refreshFromCloud(),
                         success: '读取完成，结果可在聚合收藏查看')),
                 ListTile(
                     leading: const Icon(TablerIcons.refresh),
                     title: const Text('同步收藏到两个平台'),
-                    subtitle: const Text('各平台的歌曲分别保存到自己的“BuYu收藏”歌单'),
+                    subtitle: const Text('本地变更会自动同步，失败会重试，也可立即同步'),
                     onTap: () async {
                       await qq.restore();
                       await UnifiedLibrary.instance.sync();

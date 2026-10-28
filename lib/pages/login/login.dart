@@ -89,9 +89,7 @@ class _LoginViewStateP extends State<LoginViewPage> {
       _message = '';
     });
     if (GetIt.I.isRegistered<UnifiedLibrary>())
-      unawaited(UnifiedLibrary.instance
-          .refreshFromCloud()
-          .then((_) => UnifiedLibrary.instance.sync()));
+      unawaited(UnifiedLibrary.instance.reconcile());
   }
 
   void _switchSource(MusicSource source) {

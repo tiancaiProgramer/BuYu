@@ -4,20 +4,22 @@
 
 这是 BuJuan 的社区维护版。原项目来源、原作者及第三方组件信息集中记录在文末“来源与致谢”和 [CREDITS.md](CREDITS.md)。
 
-现已发布网易云 + QQ 音乐双音源版本：沿用现有界面，支持双源单曲搜索、混合播放、聚合收藏和分平台歌单同步。完整功能与边界见 [2.0.8 发布说明](docs/releases/2.0.8-2116.md)。共存测试阶段记录见 [试用说明](docs/qq-music-coexist-preview.md)。
+现已发布网易云 + QQ 音乐双音源版本：沿用现有界面，支持双源单曲搜索、混合播放、QQ 推荐歌单、聚合收藏自动核对与同步。当前更新和验证范围见 [2.0.8（2120）发布说明](docs/releases/2.0.8-2120.md)，双音源完整功能与边界见 [基础功能说明](docs/releases/2.0.8-2116.md)。共存测试阶段记录见 [试用说明](docs/qq-music-coexist-preview.md)。
 
 自 2026-10-18 起，应用对外名称改为 **BuYu**，后续新安装包统一使用 `BuYu` 前缀；以下已发布版本保留其原始名称和下载链接。
 
 ## 下载与安装
 
-当前版本 **BuYu 2.0.8（2116）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.8.2116)。
+当前版本 **BuYu 2.0.8（2120）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.8.2120)。
+
+本次增加 QQ 推荐歌单、聚合收藏自动核对及失败重试，修复网易云断网误判未登录和缓存文件权限流程。已在 MIX Fold 3 保留数据升级，实测推荐播放、两平台收藏增删、断网重试、双账号保留及合屏菜单状态；完整自动回归 290 项通过。同步规则和验证边界见 [当前发布说明](docs/releases/2.0.8-2120.md)。
 
 在原有横竖屏播放器内接入 QQ 音乐独立登录、双源单曲搜索、聚合收藏、每日/FM/播客、歌单管理和下载；优化账号退出、页面转场及播放栏布局。维护与新增功能：**tiancaiProgramer**。
 
 | 安装包 | 适用设备 | 大小 |
 | --- | --- | --- |
-| [BuYu-2.0.8-2116-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2116/BuYu-2.0.8-2116-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.8 MB |
-| [BuYu-2.0.8-2116-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2116/BuYu-2.0.8-2116-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.6 MB |
+| [BuYu-2.0.8-2120-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2120/BuYu-2.0.8-2120-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.8 MB |
+| [BuYu-2.0.8-2120-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2120/BuYu-2.0.8-2120-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.6 MB |
 
 - 最低 Android 5.0；Android 4.4 尚未支持。
 - 交付 APK 与本次修复所用原 2.0.5 APK 签名一致，可覆盖升级并保留数据。
@@ -29,7 +31,7 @@
 - 共存测试版与正式版数据独立，不自动迁移测试版账号或本地分类；请在正式版重新登录，云端收藏可重新读取。
 - 双账号登录后可在“设置 → 音乐账号与收藏 → 主页头像来源”切换头像与昵称。
 
-完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版细节、权限及未实现功能见 [2.0.8 发布说明](docs/releases/2.0.8-2116.md)。
+完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版细节、同步规则及验证范围见 [2.0.8 发布说明](docs/releases/2.0.8-2120.md)，双音源基础功能与未实现功能见 [2116 说明](docs/releases/2.0.8-2116.md)。
 
 ## 2.0.6 更新
 
