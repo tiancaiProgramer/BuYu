@@ -50,6 +50,9 @@ void main() {
           expect(policy.showNetease, !hide || netease);
           expect(policy.showQq, !hide || qq);
           expect(policy.showDiscovery, !hide || netease || qq);
+          expect(policy.musicSources.contains(MusicSource.netease),
+              !hide || netease);
+          expect(policy.musicSources.contains(MusicSource.qq), !hide || qq);
           expect(policy.sources.contains(PlaylistSource.netease),
               !hide || netease);
           expect(policy.sources.contains(PlaylistSource.qq), !hide || qq);

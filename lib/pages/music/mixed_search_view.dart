@@ -10,6 +10,7 @@ import '../../common/netease_api/src/dio_ext.dart';
 import '../../common/netease_api/src/api/play/bean.dart';
 import '../home/home_controller.dart';
 import '../play_list/playlist_view.dart';
+import 'source_access.dart';
 
 class MixedSongSearchView extends StatefulWidget {
   const MixedSongSearchView({super.key, required this.query, this.search});
@@ -39,20 +40,33 @@ class _MixedSongSearchViewState extends State<MixedSongSearchView> {
             QqMusic.instance.search(query, page: page),
       });
   MusicSource? filter;
+  late final SourceAccess _access;
+  void _reload() => search.search(widget.query, sources: _access.sources);
+  void _accountsChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (filter != null && !_access.sources.contains(filter)) filter = null;
+    });
+    _reload();
+  }
+
   @override
   void initState() {
     super.initState();
-    search.search(widget.query);
+    _access = SourceAccess()..addListener(_accountsChanged);
+    _reload();
   }
 
   @override
   void didUpdateWidget(MixedSongSearchView old) {
     super.didUpdateWidget(old);
-    if (old.query != widget.query) search.search(widget.query);
+    if (old.query != widget.query) _reload();
   }
 
   @override
   void dispose() {
+    _access.removeListener(_accountsChanged);
+    _access.dispose();
     if (widget.search == null) search.dispose();
     super.dispose();
   }
@@ -61,36 +75,44 @@ class _MixedSongSearchViewState extends State<MixedSongSearchView> {
   Widget build(BuildContext context) => AnimatedBuilder(
       animation: search,
       builder: (context, _) {
+        final visible = _access.sources;
         final songs = search.songs
-            .where((s) => filter == null || sourceOf(s) == filter)
+            .where((s) =>
+                visible.contains(sourceOf(s)) &&
+                (filter == null || sourceOf(s) == filter))
             .toList();
-        final sources = filter == null ? MusicSource.values : [filter!];
+        final sources = filter == null ? visible : [filter!];
+        final busy = search.busy.any(sources.contains);
         final ended = sources.every(search.ended.contains);
         return Column(children: [
-          Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Wrap(spacing: 8, children: [
-                BuYuChoiceChip(
-                    label: const Text('全部'),
-                    selected: filter == null,
-                    onSelected: (_) => setState(() => filter = null)),
-                for (final source in MusicSource.values)
+          if (visible.isNotEmpty)
+            Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Wrap(spacing: 8, children: [
                   BuYuChoiceChip(
-                      label: Text(source.label),
-                      selected: filter == source,
-                      onSelected: (_) => setState(() => filter = source)),
-              ])),
-          for (final source in search.errors.keys)
+                      label: const Text('全部'),
+                      selected: filter == null,
+                      onSelected: (_) => setState(() => filter = null)),
+                  for (final source in visible)
+                    BuYuChoiceChip(
+                        label: Text(source.label),
+                        selected: filter == source,
+                        onSelected: (_) => setState(() => filter = source)),
+                ])),
+          for (final source in search.errors.keys.where(sources.contains))
             TextButton(
                 onPressed: () => search.load(source),
                 child: Text(search.errors[source]!)),
-          if (search.busy.isNotEmpty)
-            const LinearProgressIndicator(minHeight: 2),
+          if (busy) const LinearProgressIndicator(minHeight: 2),
           Expanded(
               child: songs.isEmpty
                   ? Center(
-                      child: Text(
-                          search.busy.isNotEmpty ? '正在搜索…' : '暂无歌曲，可切换来源或重试'))
+                      child: Text(visible.isEmpty
+                          ? '暂无已登录的平台，请先登录音乐账号'
+                          : busy
+                              ? '正在搜索…'
+                              : '暂无歌曲，可切换来源或重试'))
                   : ListView.builder(
                       itemCount: songs.length + 1,
                       itemExtent: 78,
@@ -98,14 +120,11 @@ class _MixedSongSearchViewState extends State<MixedSongSearchView> {
                         if (index == songs.length)
                           return Center(
                               child: TextButton(
-                                  onPressed: ended || search.busy.isNotEmpty
+                                  onPressed: ended || busy
                                       ? null
                                       : () {
-                                          for (final source
-                                              in MusicSource.values) {
-                                            if (filter == null ||
-                                                filter == source)
-                                              search.load(source);
+                                          for (final source in sources) {
+                                            search.load(source);
                                           }
                                         },
                                   child: Text(ended ? '没有更多歌曲' : '加载更多')));

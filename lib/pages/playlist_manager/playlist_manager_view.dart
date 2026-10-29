@@ -16,6 +16,7 @@ import '../home/home_controller.dart';
 import '../music/library_actions.dart';
 import '../music/mixed_library_view.dart';
 import '../music/playlist_source_filter.dart';
+import '../music/source_access.dart';
 import '../user/user_controller.dart';
 
 class PlaylistManagerView extends StatefulWidget {
@@ -25,6 +26,7 @@ class PlaylistManagerView extends StatefulWidget {
 }
 
 class _ManagerState extends State<PlaylistManagerView> {
+  final _access = SourceAccess();
   final qq = QqMusic.instance;
   final folders = LocalFolders.instance;
   bool loading = false;
@@ -50,20 +52,25 @@ class _ManagerState extends State<PlaylistManagerView> {
     final source = await showModalBottomSheet<String>(
         context: context,
         isScrollControlled: true,
-        builder: (sheet) => AdaptiveOptionSheet(title: '新建文件夹或歌单', children: [
-              ListTile(
-                  leading: const Icon(TablerIcons.folder_plus),
-                  title: const Text('新建本地文件夹'),
-                  onTap: () => Navigator.pop(sheet, 'local')),
-              ListTile(
-                  leading: const Icon(TablerIcons.playlist),
-                  title: const Text('新建网易云歌单'),
-                  onTap: () => Navigator.pop(sheet, 'netease')),
-              ListTile(
-                  leading: const Icon(TablerIcons.playlist),
-                  title: const Text('新建QQ音乐歌单'),
-                  onTap: () => Navigator.pop(sheet, 'qq')),
-            ]));
+        builder: (sheet) => AnimatedBuilder(
+            animation: _access,
+            builder: (_, __) =>
+                AdaptiveOptionSheet(title: '新建文件夹或歌单', children: [
+                  ListTile(
+                      leading: const Icon(TablerIcons.folder_plus),
+                      title: const Text('新建本地文件夹'),
+                      onTap: () => Navigator.pop(sheet, 'local')),
+                  if (_access.visibility.showNetease)
+                    ListTile(
+                        leading: const Icon(TablerIcons.playlist),
+                        title: const Text('新建网易云歌单'),
+                        onTap: () => Navigator.pop(sheet, 'netease')),
+                  if (_access.visibility.showQq)
+                    ListTile(
+                        leading: const Icon(TablerIcons.playlist),
+                        title: const Text('新建QQ音乐歌单'),
+                        onTap: () => Navigator.pop(sheet, 'qq')),
+                ])));
     if (source == null || !mounted) return;
     final name = await libraryNameDialog(
         context,
@@ -143,11 +150,19 @@ class _ManagerState extends State<PlaylistManagerView> {
   }
 
   @override
+  void dispose() {
+    _access.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => AnimatedBuilder(
-      animation: Listenable.merge([qq, folders]),
+      animation: Listenable.merge([qq, folders, _access]),
       builder: (context, _) => Obx(() {
             final user = UserController.to;
-            final source = user.playlistSource.value;
+            final visibility = _access.visibility;
+            final source =
+                visibility.effectiveSource(user.playlistSource.value);
             final cloud = user.cloudPlaylistsExpanded.value;
             final cards = <Widget>[
               ListTile(
@@ -201,7 +216,9 @@ class _ManagerState extends State<PlaylistManagerView> {
                               const PopupMenuItem(
                                   value: 'delete', child: Text('删除文件夹'))
                             ])),
-              if (cloud && source != PlaylistSource.netease)
+              if (cloud &&
+                  visibility.showQq &&
+                  source != PlaylistSource.netease)
                 for (final list in qq.playlists)
                   ListTile(
                       leading: const Icon(TablerIcons.playlist),
@@ -221,7 +238,9 @@ class _ManagerState extends State<PlaylistManagerView> {
                                         value: 'delete', child: Text('删除云端歌单'))
                                   ])
                           : null),
-              if (cloud && source != PlaylistSource.qq)
+              if (cloud &&
+                  visibility.showNetease &&
+                  source != PlaylistSource.qq)
                 for (final list in user.playlist)
                   ListTile(
                       leading: const Icon(TablerIcons.playlist),
@@ -257,18 +276,20 @@ class _ManagerState extends State<PlaylistManagerView> {
                 body: SafeArea(
                     top: false,
                     child: Column(children: [
-                      Row(children: [
-                        Expanded(
-                            child: PlaylistSourceFilter(
-                                value: source,
-                                onChanged: user.setPlaylistSource)),
-                        IconButton(
-                            tooltip: cloud ? '折叠云端歌单' : '展开云端歌单',
-                            icon: Icon(cloud
-                                ? TablerIcons.chevron_up
-                                : TablerIcons.chevron_down),
-                            onPressed: user.toggleCloudPlaylists)
-                      ]),
+                      if (visibility.sources.length > 1)
+                        Row(children: [
+                          Expanded(
+                              child: PlaylistSourceFilter(
+                                  value: source,
+                                  sources: visibility.sources,
+                                  onChanged: user.setPlaylistSource)),
+                          IconButton(
+                              tooltip: cloud ? '折叠云端歌单' : '展开云端歌单',
+                              icon: Icon(cloud
+                                  ? TablerIcons.chevron_up
+                                  : TablerIcons.chevron_down),
+                              onPressed: user.toggleCloudPlaylists)
+                        ]),
                       if (loading) const LinearProgressIndicator(),
                       if (error.isNotEmpty) Text(error),
                       Expanded(

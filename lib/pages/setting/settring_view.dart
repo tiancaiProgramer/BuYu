@@ -379,7 +379,7 @@ class _HideUnloggedSetting extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
       key: const ValueKey('hide-unlogged-setting'),
       title: Text('未登录隐藏', style: TextStyle(fontSize: 30.sp)),
-      subtitle: const Text('隐藏主页中未登录平台的入口和歌单，云盘与本地收藏始终显示'),
+      subtitle: const Text('隐藏未登录平台的浏览入口、来源选项和云端歌单，云盘与本地收藏始终显示'),
       trailing: Obx(() => Icon(
           Home.to.hideUnlogged.value ? TablerIcons.toggle_right : TablerIcons.toggle_left,
           size: 56.w, color: Theme.of(context).cardColor.withOpacity(

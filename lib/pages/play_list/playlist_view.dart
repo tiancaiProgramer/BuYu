@@ -313,7 +313,7 @@ class SongItemShowImage extends StatelessWidget {
                     final library = UnifiedLibrary.instance;
                     try {
                       await library.setFavorite(mediaItem, !library.contains(mediaItem));
-                      WidgetUtil.showToast('聚合收藏已更新，登录后同步到对应平台');
+                      WidgetUtil.showToast('聚合收藏已保存，将自动同步到对应平台');
                     } catch (_) {
                       WidgetUtil.showToast('聚合收藏保存失败，请检查存储空间后重试');
                     }

@@ -1,7 +1,8 @@
 import '../../common/app_style.dart';
 import '../music/mixed_search_view.dart';
+import '../music/source_access.dart';
+import '../../common/music/mixed_search.dart';
 import 'package:auto_route/auto_route.dart';
-import 'package:bujuan/pages/home/home_controller.dart';
 import 'package:bujuan/widget/my_get_view.dart';
 import 'package:bujuan/widget/request_widget/request_view.dart';
 import 'package:flutter/material.dart';
@@ -19,14 +20,15 @@ import '../../widget/request_widget/request_loadmore_view.dart';
 import '../play_list/playlist_view.dart';
 
 class SearchView extends StatefulWidget {
-  const SearchView({Key? key}) : super(key: key);
+  const SearchView({Key? key, this.songSearch}) : super(key: key);
+  final MixedSearch? songSearch;
 
   @override
   State<SearchView> createState() => _SearchViewState();
 }
 
-class _SearchViewState extends State<SearchView>
-    with SingleTickerProviderStateMixin {
+class _SearchViewState extends State<SearchView> with TickerProviderStateMixin {
+  late final SourceAccess _access;
   final TextEditingController _search = TextEditingController();
   final PageController _pageController = PageController();
   List<FlashyNavbarItem> items = [
@@ -35,20 +37,23 @@ class _SearchViewState extends State<SearchView>
     FlashyNavbarItem(icon: const Icon(TablerIcons.disc)),
     FlashyNavbarItem(icon: const Icon(TablerIcons.users)),
   ];
-  final List<Tab> tabs = [
-    const Tab(
-      text: '双源单曲',
-    ),
-    const Tab(
-      text: '网易歌单',
-    ),
-    const Tab(
-      text: '网易专辑',
-    ),
-    const Tab(
-      text: '网易歌手',
-    ),
-  ];
+  List<Tab> get tabs => [
+        Tab(
+          text: _access.sources.length > 1 ? '双源单曲' : '单曲',
+        ),
+        if (_access.visibility.showNetease)
+          const Tab(
+            text: '网易歌单',
+          ),
+        if (_access.visibility.showNetease)
+          const Tab(
+            text: '网易专辑',
+          ),
+        if (_access.visibility.showNetease)
+          const Tab(
+            text: '网易歌手',
+          ),
+      ];
   TabController? _tabController;
 
   String searchContent = '';
@@ -73,8 +78,20 @@ class _SearchViewState extends State<SearchView>
   @override
   void initState() {
     super.initState();
+    _access = SourceAccess()..addListener(_accountsChanged);
     _search.addListener(listener);
     _tabController = TabController(length: tabs.length, vsync: this);
+  }
+
+  void _accountsChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_tabController!.length != tabs.length) {
+        final previous = _tabController!;
+        _tabController = TabController(length: tabs.length, vsync: this);
+        previous.dispose();
+      }
+    });
   }
 
   listener() {
@@ -87,6 +104,8 @@ class _SearchViewState extends State<SearchView>
 
   @override
   void dispose() {
+    _access.removeListener(_accountsChanged);
+    _access.dispose();
     _search.removeListener(listener);
     _search.dispose();
     _pageController.dispose();
@@ -130,39 +149,44 @@ class _SearchViewState extends State<SearchView>
       ),
       body: Visibility(
           visible: searchContent.isNotEmpty,
-          replacement: RequestWidget<SearchKeyWrapX>(
-              dioMetaData: searchHotKeyDioMetaData(),
-              childBuilder: (data) => Padding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 30.w, vertical: 30.w),
-                    child: Wrap(
-                      children: data.result.hots
-                          .map((e) => InkWell(
-                                child: Container(
-                                  margin: EdgeInsets.symmetric(
-                                      horizontal: 6.w, vertical: 15.w),
-                                  padding: EdgeInsets.symmetric(
-                                      vertical: 5.w, horizontal: 10.w),
-                                  decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSecondary,
-                                      borderRadius:
-                                          BorderRadius.circular(30.w)),
-                                  child: Text(
-                                    e.first ?? '',
-                                    style: TextStyle(fontSize: 26.sp),
-                                  ),
-                                ),
-                                onTap: () {
-                                  _search.text = e.first ?? '';
-                                  searchContent = _search.text;
-                                  setState(() {});
-                                },
-                              ))
-                          .toList(),
-                    ),
-                  )),
+          replacement: !_access.visibility.showNetease
+              ? Center(
+                  child: Text(_access.sources.isEmpty
+                      ? '暂无已登录的平台，请先登录音乐账号'
+                      : '输入关键词搜索QQ音乐'))
+              : RequestWidget<SearchKeyWrapX>(
+                  dioMetaData: searchHotKeyDioMetaData(),
+                  childBuilder: (data) => Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 30.w, vertical: 30.w),
+                        child: Wrap(
+                          children: data.result.hots
+                              .map((e) => InkWell(
+                                    child: Container(
+                                      margin: EdgeInsets.symmetric(
+                                          horizontal: 6.w, vertical: 15.w),
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 5.w, horizontal: 10.w),
+                                      decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSecondary,
+                                          borderRadius:
+                                              BorderRadius.circular(30.w)),
+                                      child: Text(
+                                        e.first ?? '',
+                                        style: TextStyle(fontSize: 26.sp),
+                                      ),
+                                    ),
+                                    onTap: () {
+                                      _search.text = e.first ?? '';
+                                      searchContent = _search.text;
+                                      setState(() {});
+                                    },
+                                  ))
+                              .toList(),
+                        ),
+                      )),
           child: Column(
             children: [
               TabBar(
@@ -180,9 +204,10 @@ class _SearchViewState extends State<SearchView>
                 controller: _tabController,
                 children: [
                   _buildSongSearchView(),
-                  _buildPlayListSearchView(),
-                  _buildAlbumSearchView(),
-                  _buildArtistsSearchView(),
+                  if (_access.visibility.showNetease)
+                    _buildPlayListSearchView(),
+                  if (_access.visibility.showNetease) _buildAlbumSearchView(),
+                  if (_access.visibility.showNetease) _buildArtistsSearchView(),
                 ],
               )),
             ],
@@ -190,7 +215,8 @@ class _SearchViewState extends State<SearchView>
     ));
   }
 
-  Widget _buildSongSearchView() => MixedSongSearchView(query: searchContent);
+  Widget _buildSongSearchView() =>
+      MixedSongSearchView(query: searchContent, search: widget.songSearch);
 
   Widget _buildPlayListSearchView() {
     return RequestLoadMoreWidget<SearchPlaylistWrapX, Play>(

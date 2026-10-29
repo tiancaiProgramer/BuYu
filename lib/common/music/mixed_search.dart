@@ -17,6 +17,7 @@ class MixedSearch extends ChangeNotifier {
   String query = '';
   int _generation = 0;
   bool _disposed = false;
+  Set<MusicSource>? _enabledSources;
   List<MediaItem> get songs {
     final a = results[MusicSource.netease] ?? <MediaItem>[];
     final b = results[MusicSource.qq] ?? <MediaItem>[];
@@ -32,7 +33,9 @@ class MixedSearch extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> search(String value) async {
+  Future<void> search(String value, {Iterable<MusicSource>? sources}) async {
+    _enabledSources =
+        (sources ?? providers.keys).where(providers.containsKey).toSet();
     query = value.trim();
     _generation++;
     results.clear();
@@ -42,12 +45,16 @@ class MixedSearch extends ChangeNotifier {
     ended.clear();
     _notify();
     if (query.isEmpty) return;
-    await Future.wait(providers.keys.map(load));
+    await Future.wait(_enabledSources!.map(load));
   }
 
   Future<void> load(MusicSource source) async {
-    if (busy.contains(source) || ended.contains(source) || query.isEmpty)
-      return;
+    if (_disposed ||
+        !providers.containsKey(source) ||
+        (_enabledSources != null && !_enabledSources!.contains(source)) ||
+        busy.contains(source) ||
+        ended.contains(source) ||
+        query.isEmpty) return;
     final generation = _generation;
     final text = query;
     final page = (pages[source] ?? 0) + 1;

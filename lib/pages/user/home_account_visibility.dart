@@ -1,7 +1,8 @@
 // Community maintenance and new features: tiancaiProgramer.
 import '../music/playlist_source_filter.dart';
+import '../../common/music/music_source.dart';
 
-/// Only homepage entries are hidden; local collections and login stay available.
+/// Filters browsing platforms; local collections and login stay available.
 class HomeAccountVisibility {
   const HomeAccountVisibility(
       {required this.hideUnlogged,
@@ -11,6 +12,10 @@ class HomeAccountVisibility {
   bool get showNetease => !hideUnlogged || neteaseLoggedIn;
   bool get showQq => !hideUnlogged || qqLoggedIn;
   bool get showDiscovery => !hideUnlogged || neteaseLoggedIn || qqLoggedIn;
+  List<MusicSource> get musicSources => [
+        if (showNetease) MusicSource.netease,
+        if (showQq) MusicSource.qq,
+      ];
   List<PlaylistSource> get sources => [
         PlaylistSource.all,
         if (showQq) PlaylistSource.qq,

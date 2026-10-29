@@ -2,11 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../common/music/music_source.dart';
-import '../../common/music/qq_music.dart';
 import '../../widget/buyu_components.dart';
 import '../home/home_controller.dart';
 import '../login/login.dart';
-import '../user/user_controller.dart';
+import 'source_access.dart';
 
 /// A shared platform selector for discovery, daily songs and podcasts.
 class DiscoverySources extends StatefulWidget {
@@ -27,19 +26,19 @@ class DiscoverySources extends StatefulWidget {
 
 class _DiscoverySourcesState extends State<DiscoverySources> {
   MusicSource _source = MusicSource.netease;
-  Worker? _worker;
-  bool signedIn(MusicSource source) =>
-      widget.statusReader?.call(source) ??
-      (source == MusicSource.qq
-          ? QqMusic.instance.loggedIn
-          : Get.isRegistered<Home>() &&
-              Home.to.loginStatus.value == LoginStatus.login);
+  late final SourceAccess _access;
+  bool signedIn(MusicSource source) => _access.signedIn(source);
   bool available(MusicSource source) =>
       widget.publicSources.contains(source) || signedIn(source);
   void accountsChanged() {
     if (!mounted) return;
     setState(() {
-      if (!available(_source) && signedIn(other)) _source = other;
+      final sources = _access.sources;
+      if (!sources.contains(_source) && sources.isNotEmpty) {
+        _source = sources.first;
+      } else if (!available(_source) && signedIn(other)) {
+        _source = other;
+      }
     });
   }
 
@@ -48,62 +47,73 @@ class _DiscoverySourcesState extends State<DiscoverySources> {
   @override
   void initState() {
     super.initState();
+    _access = SourceAccess(statusReader: widget.statusReader);
     if (Get.isRegistered<Home>()) {
       final saved = Home.to.box.get('DISCOVERY_SOURCE_${widget.id}');
       _source = MusicSource.values.firstWhere(
-          (s) => s.name == saved && available(s),
+          (s) => s.name == saved && available(s) && _access.sources.contains(s),
           orElse: () =>
               signedIn(MusicSource.netease) || !signedIn(MusicSource.qq)
                   ? MusicSource.netease
                   : MusicSource.qq);
-      _worker = ever(Home.to.loginStatus, (_) => accountsChanged());
     } else if (signedIn(MusicSource.qq) && !signedIn(MusicSource.netease)) {
       _source = MusicSource.qq;
     }
-    QqMusic.instance.addListener(accountsChanged);
+    _access.addListener(accountsChanged);
   }
 
   @override
   void dispose() {
-    _worker?.dispose();
-    QqMusic.instance.removeListener(accountsChanged);
+    _access.removeListener(accountsChanged);
+    _access.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => Column(children: [
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Wrap(spacing: 8, children: [
-              for (final source in MusicSource.values)
-                BuYuChoiceChip(
-                    key: ValueKey('discovery-source:${source.name}'),
-                    label: Text(source.label),
-                    selected: _source == source,
-                    onSelected: (_) {
-                      setState(() => _source = source);
-                      if (Get.isRegistered<Home>())
-                        Home.to.box
-                            .put('DISCOVERY_SOURCE_${widget.id}', source.name);
-                    })
-            ])),
+        if (_access.sources.isNotEmpty)
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Wrap(spacing: 8, children: [
+                for (final source in _access.sources)
+                  BuYuChoiceChip(
+                      key: ValueKey('discovery-source:${source.name}'),
+                      label: Text(source.label),
+                      selected: _source == source,
+                      onSelected: (_) {
+                        setState(() => _source = source);
+                        if (Get.isRegistered<Home>())
+                          Home.to.box.put(
+                              'DISCOVERY_SOURCE_${widget.id}', source.name);
+                      })
+              ])),
         Expanded(
             child: KeyedSubtree(
                 key: ValueKey(
-                    '${widget.id}:${_source.name}:${signedIn(_source)}:${_source == MusicSource.qq ? QqMusic.instance.account : ''}'),
-                child: available(_source)
-                    ? (_source == MusicSource.qq
-                        ? widget.qq(context)
-                        : widget.netease(context))
-                    : Center(
+                    '${widget.id}:${_source.name}:${signedIn(_source)}:${_access.account(_source)}'),
+                child: _access.sources.isEmpty
+                    ? Center(
                         child: TextButton(
                             onPressed: () async {
                               await Navigator.of(context).push(
                                   MaterialPageRoute<void>(
-                                      builder: (_) => LoginViewPage(
-                                          initialSource: _source)));
+                                      builder: (_) => const LoginViewPage()));
                               accountsChanged();
                             },
-                            child: Text('请登录${_source.label}账号'))))),
+                            child: const Text('暂无已登录的平台，请先登录音乐账号')))
+                    : available(_source)
+                        ? (_source == MusicSource.qq
+                            ? widget.qq(context)
+                            : widget.netease(context))
+                        : Center(
+                            child: TextButton(
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                          builder: (_) => LoginViewPage(
+                                              initialSource: _source)));
+                                  accountsChanged();
+                                },
+                                child: Text('请登录${_source.label}账号'))))),
       ]);
 }
