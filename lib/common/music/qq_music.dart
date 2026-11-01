@@ -318,7 +318,8 @@ class QqMusic extends ChangeNotifier {
         throw MusicServiceError('QQ音乐服务暂未完成请求（${data['code']}），请稍后重试');
       }
       return data;
-    } on DioException {
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
       throw const MusicServiceError('QQ音乐连接失败，请检查网络后重试');
     }
   }
@@ -377,12 +378,25 @@ class QqMusic extends ChangeNotifier {
     return items.whereType<Map>().map(song).toList();
   }
 
+  /// QQ has four distinct formats; `higher` shares the standard MP3 format.
+  static AudioQuality? nextLowerQuality(AudioQuality quality) =>
+      switch (quality) {
+        AudioQuality.hires => AudioQuality.lossless,
+        AudioQuality.lossless => AudioQuality.exhigh,
+        AudioQuality.exhigh || AudioQuality.higher => AudioQuality.standard,
+        AudioQuality.standard => null,
+      };
+
   Future<QqAudio> audio(MediaItem track, AudioQuality preferred,
-      {CancelToken? cancelToken}) async {
+      {CancelToken? cancelToken,
+      bool allowFallback = true,
+      Duration qualityTimeout = const Duration(seconds: 5)}) async {
     final mid =
         track.extras?['mid'] as String? ?? track.id.replaceFirst('qq:', '');
     final mediaMid = track.extras?['mediaMid'] as String? ?? '';
-    final candidates = preferred.fallbacks.toList();
+    await restore();
+    if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+    final candidates = allowFallback ? preferred.fallbacks : [preferred];
     final attempted = <String>{};
     for (final quality in candidates) {
       final format = switch (quality) {
@@ -394,26 +408,48 @@ class QqMusic extends ChangeNotifier {
       if (!attempted.add(format.$1)) continue;
       final filename =
           '${format.$1}${mediaMid.isEmpty ? mid + mid : mediaMid}${format.$2}';
-      final data = await rpc(
-          'vkey.GetVkeyServer',
-          'CgiGetVkey',
-          {
-            'filename': [filename],
-            'guid': '${Random.secure().nextInt(1 << 30)}',
-            'songmid': [mid],
-            'songtype': [(track.extras?['songType'] as num? ?? 0).toInt()],
-            'uin': account.isEmpty ? '0' : account,
-            'loginflag': loggedIn ? 1 : 0,
-            'platform': '20'
-          },
-          cancelToken: cancelToken);
-      final entries = data['midurlinfo'] as List? ?? [];
-      if (entries.isEmpty || entries.first is! Map) continue;
+      if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+      final candidateToken = CancelToken();
+      if (cancelToken != null) {
+        unawaited(cancelToken.whenCancel.then((reason) {
+          if (!candidateToken.isCancelled) candidateToken.cancel(reason);
+        }));
+      }
+      Map data;
+      try {
+        data = await rpc(
+                'vkey.GetVkeyServer',
+                'CgiGetVkey',
+                {
+                  'filename': [filename],
+                  'guid': '${Random.secure().nextInt(1 << 30)}',
+                  'songmid': [mid],
+                  'songtype': [
+                    (track.extras?['songType'] as num? ?? 0).toInt()
+                  ],
+                  'uin': account.isEmpty ? '0' : account,
+                  'loginflag': loggedIn ? 1 : 0,
+                  'platform': '20'
+                },
+                cancelToken: candidateToken)
+            .timeout(qualityTimeout, onTimeout: () {
+          candidateToken.cancel('QQ audio quality request timed out');
+          throw TimeoutException('QQ audio quality request timed out');
+        });
+      } on Exception {
+        // An unavailable format or one failed request must not prevent trying
+        // the remaining official formats. A cancelled selection must stop.
+        if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+        continue;
+      }
+      if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+      final entries = data['midurlinfo'];
+      if (entries is! List || entries.isEmpty || entries.first is! Map) continue;
       final item = entries.first as Map;
       final purl = '${item['purl'] ?? ''}';
       if (purl.isEmpty || purl.contains('试听') || purl.startsWith('RS02'))
         continue;
-      final sip = (data['sip'] as List? ?? [])
+      final sip = (data['sip'] is List ? data['sip'] as List : const [])
           .whereType<String>()
           .where(
               (u) => Uri.tryParse(u)?.host.endsWith('.qqmusic.qq.com') == true)
@@ -437,7 +473,8 @@ class QqMusic extends ChangeNotifier {
         'RS01' => (AudioQuality.hires, 'flac'),
         _ => null
       };
-      if (actual == null) continue;
+      if (actual == null || actual.$1.index > quality.index) continue;
+      if(!allowFallback && !basename.startsWith(format.$1)) continue;
       return QqAudio(
           url.replace(scheme: 'https').toString(), actual.$1, actual.$2);
     }

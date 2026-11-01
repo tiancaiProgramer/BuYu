@@ -4,6 +4,9 @@ import 'package:auto_route/auto_route.dart';
 import 'package:bujuan/common/appearance_store.dart';
 import 'package:bujuan/common/audio_quality.dart';
 import '../../common/audio_stream_info.dart';
+import '../../common/audio_quality_preferences.dart';
+import '../../common/music/music_source.dart';
+import 'platform_audio_quality_sheet.dart';
 import '../../common/downloads.dart';
 import '../../widget/adaptive_option_sheet.dart';
 import '../../widget/adaptive_wallpaper.dart';
@@ -55,62 +58,40 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
 
   Future<void> _quality() async {
     if (switchingQuality) return;
-    final selected = AudioQuality.parse(Home.to.box.get(audioQualitySp));
-    final quality = await showModalBottomSheet<AudioQuality>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheet) => AdaptiveOptionSheet(
-            title: '播放音质',
-            children: [
-              for (final option in AudioQuality.values)
-                RadioListTile<AudioQuality>(
-                    key: ValueKey('audio-quality:${option.name}'),
-                    title: Text(option.label),
-                    value: option,
-                    groupValue: selected,
-                    onChanged: (value) => Navigator.pop(sheet, value)),
-            ],
-            footer:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ValueListenableBuilder<AudioQualityReport?>(
-                  valueListenable: Home.to.audioServeHandler.qualityReport,
-                  builder: (_, report, __) => SelectableText(
-                      report?.description ?? '播放歌曲后，可在这里查看实际返回音质和文件头核验结果。',
-                      key: const ValueKey('audio-quality-report'),
-                      style: const TextStyle(fontSize: 14, height: 1.5))),
-              const SizedBox(height: 8),
-              const Text('优先使用所选音质，不可用时自动降级。核验结果针对当前实际播放文件。',
-                  style: TextStyle(fontSize: 12)),
-            ])));
-    if (quality == null || quality == selected || !mounted) return;
+    final preferences = AudioQualityPreferences(Home.to.box);
+    final choice = await showModalBottomSheet<(MusicSource, AudioQuality)>(
+        context: context, isScrollControlled: true,
+        builder: (sheet) => PlatformAudioQualitySheet(
+          use: AudioQualityUse.playback, preferences: preferences,
+          onSelected: (source, value) => Navigator.pop(sheet, (source, value)),
+          footer: ValueListenableBuilder<AudioQualityReport?>(
+            valueListenable: Home.to.audioServeHandler.qualityReport,
+            builder: (_, report, __) => SelectableText(
+              report?.description ?? '播放歌曲后，可在这里查看实际返回音质和文件头核验结果。',
+              key: const ValueKey('audio-quality-report'),
+              style: const TextStyle(fontSize:14,height:1.5))),
+        ));
+    if(choice == null || !mounted) return;
     setState(() => switchingQuality = true);
     try {
-      await Home.to.audioServeHandler.setAudioQuality(quality);
-      message('已应用音质优先级：${quality.label}');
-    } catch (_) {
-      message('音质设置未完成，请重试');
-    } finally {
-      if (mounted) setState(() => switchingQuality = false);
-    }
+      await Home.to.audioServeHandler.setAudioQuality(choice.$2, source:choice.$1);
+      message('已应用${choice.$1.label}音质优先级：${choice.$2.label}');
+    } catch (_) { message('音质设置未完成，请重试'); }
+    finally { if(mounted) setState(() => switchingQuality = false); }
   }
 
   Future<void> _downloadQuality() async {
     final downloads = Downloads.instance;
-    final quality = await showModalBottomSheet<AudioQuality>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheet) => AdaptiveOptionSheet(title: '默认下载音质', children: [
-              for (final quality in AudioQuality.values)
-                RadioListTile<AudioQuality>(
-                    title: Text(quality.label),
-                    value: quality,
-                    groupValue: downloads.defaultQuality,
-                    onChanged: (value) => Navigator.pop(sheet, value)),
-            ]));
-    if (quality == null) return;
-    await Home.to.box.put(Downloads.qualityKey, quality.name);
+    final preferences = AudioQualityPreferences(Home.to.box);
+    final choice = await showModalBottomSheet<(MusicSource, AudioQuality)>(
+        context:context,isScrollControlled:true,
+        builder:(sheet)=>PlatformAudioQualitySheet(
+          use:AudioQualityUse.download,preferences:preferences,
+          onSelected:(source,value)=>Navigator.pop(sheet,(source,value))));
+    if(choice == null) return;
+    await preferences.set(choice.$1,AudioQualityUse.download,choice.$2);
     downloads.settingsChanged();
-    if (mounted) setState(() {});
+    if(mounted) setState(() {});
   }
 
   Future<void> _downloadFolder() async {
@@ -273,7 +254,7 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
           ListTile(
               key: const ValueKey('download-quality-setting'),
               title: Text('下载音质', style: TextStyle(fontSize: 30.sp)),
-              subtitle: Text(Downloads.instance.defaultQuality.label),
+              subtitle: Text(AudioQualityPreferences(Home.to.box).description(AudioQualityUse.download)),
               trailing: Icon(TablerIcons.chevron_right, size: 42.w),
               onTap: _downloadQuality),
           ListTile(
@@ -287,7 +268,7 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
               key: const ValueKey('audio-quality-setting'),
               title: Text('播放音质', style: TextStyle(fontSize: 30.sp)),
               subtitle: Text(
-                  '${AudioQuality.parse(Home.to.box.get(audioQualitySp)).label}（优先）'),
+                  AudioQualityPreferences(Home.to.box).description(AudioQualityUse.playback)),
               trailing: switchingQuality
                   ? const SizedBox(
                       width: 20,
@@ -295,6 +276,18 @@ abstract class _SettingsState<T extends StatefulWidget> extends State<T> {
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(TablerIcons.chevron_right, size: 42.w),
               onTap: switchingQuality ? null : _quality),
+          SwitchListTile.adaptive(
+              key:const ValueKey('playback-quality-fallback'),
+              title:Text('播放失败时自动降低音质',style:TextStyle(fontSize:30.sp)),
+              subtitle:Text(AudioQualityPreferences(Home.to.box).playbackFallbackEnabled
+                ? '开启：不可用时尝试较低音质' : '关闭：只请求所选档位，失败时提示'),
+              value:AudioQualityPreferences(Home.to.box).playbackFallbackEnabled,
+              onChanged:(enabled)async {
+                try {
+                  await Home.to.audioServeHandler.setPlaybackFallback(enabled);
+                  if(mounted) setState(() {});
+                } catch(_) {message('播放降级设置未完成，请重试');}
+              }),
           AppUpdateTile(
               key: const ValueKey('github-update-setting'),
               titleStyle: TextStyle(fontSize: 30.sp)),

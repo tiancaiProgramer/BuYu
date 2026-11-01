@@ -1,3 +1,6 @@
+import 'package:bujuan/common/audio_quality.dart';
+import 'package:bujuan/common/audio_quality_preferences.dart';
+import 'package:bujuan/common/music/music_source.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
@@ -286,8 +289,8 @@ void main() {
         await box.flush();
       });
       await tester.pumpAndSettle();
-      expect(box.get(audioQualitySp), 'lossless');
-      expect(find.text('无损（优先）'), findsOneWidget);
+      expect(AudioQualityPreferences(box).get(MusicSource.netease,AudioQualityUse.playback),AudioQuality.lossless);
+      expect(find.text('网易云：无损 / QQ音乐：极高'), findsOneWidget);
       await tester
           .ensureVisible(find.byKey(const ValueKey('landscape-setting')));
       await tester.pumpAndSettle();

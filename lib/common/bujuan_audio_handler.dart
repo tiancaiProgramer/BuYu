@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:bujuan/common/constants/enmu.dart';
 import 'package:bujuan/common/constants/other.dart';
 
@@ -18,6 +19,8 @@ import 'package:just_audio/just_audio.dart';
 
 import 'audio_player_handler.dart';
 import 'audio_quality.dart';
+import 'audio_quality_preferences.dart';
+import 'requested_audio_quality.dart';
 import 'audio_stream_info.dart';
 import 'display_mode.dart';
 import 'constants/key.dart';
@@ -96,6 +99,7 @@ class BujuanAudioHandler extends BaseAudioHandler
   bool _loaded = false;
   bool _wantsPlay = false;
   bool _recovering = false;
+  int? _pendingRecoveryRequest;
   bool _disposed = false;
   int _recoveries = 0;
   Duration _lastPosition = Duration.zero;
@@ -105,6 +109,7 @@ class BujuanAudioHandler extends BaseAudioHandler
   Timer? _watchdog;
   final qualityReport = ValueNotifier<AudioQualityReport?>(null);
   AudioStreamProbe? _streamProbe;
+  CancelToken? _qqResolveToken;
 
   BujuanAudioHandler({
     AudioPlayer? player,
@@ -396,8 +401,10 @@ class BujuanAudioHandler extends BaseAudioHandler
       await _load(_curIndex, playIt: playIt, next: isNext);
   }
 
-  Future<_ResolvedAudio?> _resolveUrl(MediaItem song) async {
-    final preferred = AudioQuality.parse(_box.get(audioQualitySp));
+  Future<_ResolvedAudio?> _resolveUrl(MediaItem song,
+      {AudioQuality? qualityCeiling, CancelToken? cancelToken}) async {
+    final preferred = AudioQualityPreferences(_box)
+        .get(sourceOf(song), AudioQualityUse.playback);
     if (_urlResolver != null) {
       final url = await _urlResolver!(song);
       return url == null || url.isEmpty
@@ -420,8 +427,11 @@ class BujuanAudioHandler extends BaseAudioHandler
                   requested: preferred,
                   local: true));
     }
+    final allowFallback = AudioQualityPreferences(_box).playbackFallbackEnabled;
+    final first = allowFallback ? qualityCeiling ?? preferred : preferred;
     if (sourceOf(song) == MusicSource.qq) {
-      final audio = await QqMusic.instance.audio(song, preferred);
+      final audio = await QqMusic.instance.audio(song, first,
+          cancelToken: cancelToken, allowFallback: allowFallback);
       return _ResolvedAudio(
           audio.url,
           AudioQualityReport(
@@ -431,13 +441,22 @@ class BujuanAudioHandler extends BaseAudioHandler
               returnedLevel: audio.quality.name,
               serverFormat: audio.format));
     }
-    for (final quality in preferred.fallbacks) {
+    for (final quality in allowFallback ? first.fallbacks : [first]) {
+      if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
       try {
         final response = await NeteaseMusicApi()
             .songDownloadUrl([song.id], level: quality.name);
         // Match by id and retain signed query parameters in the CDN URL.
         final item = response.data?.firstWhereOrNull((e) => e.id == song.id);
         final url = item?.url;
+        if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+        if (!allowFallback &&
+            url != null &&
+            url.isNotEmpty &&
+            !await isRequestedNeteaseQuality(song.id, item!.toJson(), quality,
+                cancelToken: cancelToken)) {
+          throw const MusicServiceError('所选音质不可用，自动降级已关闭');
+        }
         if (url != null && url.isNotEmpty)
           return _ResolvedAudio(
               url,
@@ -451,7 +470,9 @@ class BujuanAudioHandler extends BaseAudioHandler
                   serverFormat: item.type ?? item.encodeType,
                   trial: item.freeTrialInfo != null));
       } catch (_) {
-        if (quality == AudioQuality.standard) rethrow;
+        if (!allowFallback ||
+            quality == AudioQuality.standard ||
+            cancelToken?.isCancelled == true) rethrow;
       }
     }
     return null;
@@ -477,9 +498,21 @@ class BujuanAudioHandler extends BaseAudioHandler
     }
   }
 
-  Future<void> setAudioQuality(AudioQuality quality) async {
-    if (AudioQuality.parse(_box.get(audioQualitySp)) == quality) return;
-    await _box.put(audioQualitySp, quality.name);
+  Future<void> setAudioQuality(AudioQuality quality,
+      {MusicSource? source}) async {
+    if (source == null) {
+      if (AudioQuality.parse(_box.get(audioQualitySp)) == quality) return;
+      await _box.put(audioQualitySp, quality.name);
+    } else {
+      final preferences = AudioQualityPreferences(_box);
+      final supported =
+          AudioQualityOptions.clamp(source, AudioQualityUse.playback, quality);
+      if (preferences.get(source, AudioQualityUse.playback) == supported)
+        return;
+      await preferences.set(source, AudioQualityUse.playback, supported);
+      if (queue.value.isNotEmpty && sourceOf(queue.value[_curIndex]) != source)
+        return;
+    }
     if (_disposed || queue.value.isEmpty) return;
     final song = queue.value[_curIndex];
     if (song.extras?['type'] == MediaType.local.name ||
@@ -489,11 +522,32 @@ class BujuanAudioHandler extends BaseAudioHandler
     await _load(_curIndex, playIt: _wantsPlay, position: position);
   }
 
+  Future<void> setPlaybackFallback(bool enabled) async {
+    final preferences = AudioQualityPreferences(_box);
+    if (preferences.playbackFallbackEnabled == enabled) return;
+    await preferences.setPlaybackFallback(enabled);
+    if (!_disposed && _loading && queue.value.isNotEmpty) {
+      await _load(_curIndex, playIt: _wantsPlay);
+    }
+  }
+
+  AudioQuality? _lowerPlaybackQuality(MediaItem song, AudioQuality ceiling) {
+    final options =
+        AudioQualityOptions.supported(sourceOf(song), AudioQualityUse.playback)
+            .where((q) => q.index < ceiling.index)
+            .toList();
+    return options.isEmpty ? null : options.last;
+  }
+
   Future<void> _load(int index,
       {required bool playIt,
       bool next = true,
-      Duration position = Duration.zero}) async {
+      Duration position = Duration.zero,
+      AudioQuality? qualityCeiling}) async {
     final request = ++_request;
+    _qqResolveToken?.cancel('Playback selection changed');
+    final resolveToken = CancelToken();
+    _qqResolveToken = resolveToken;
     _streamProbe?.close();
     qualityReport.value = null;
     _curIndex = index;
@@ -503,10 +557,18 @@ class BujuanAudioHandler extends BaseAudioHandler
     _broadcastState();
     // Bound failures to one pass of the queue. A fully unavailable playlist
     // must stop, including when single-track repeat is selected.
-    final count = queue.value.length;
+    final count = AudioQualityPreferences(_box).playbackFallbackEnabled
+        ? queue.value.length
+        : 1;
     for (var visited = 0; visited < count && _isCurrent(request); visited++) {
       final song = queue.value[_curIndex];
-      for (var attempt = 0; attempt < 2 && _isCurrent(request); attempt++) {
+      final remote = _urlResolver == null &&
+          song.extras?['type'] != MediaType.local.name &&
+          song.extras?['type'] != MediaType.neteaseCache.name;
+      var ceiling = visited == 0 ? qualityCeiling : null;
+      var attempt = 0;
+      while (attempt < 2 && _isCurrent(request)) {
+        _ResolvedAudio? resolved;
         try {
           await _withPlayer(() async {
             if (!_isCurrent(request)) return;
@@ -516,10 +578,17 @@ class BujuanAudioHandler extends BaseAudioHandler
             _broadcastState();
           });
           if (!_isCurrent(request)) return;
-          final resolved = await _resolveUrl(song).timeout(loadTimeout);
+          // Each QQ format has its own bounded lookup. Allow the complete
+          // ladder to finish instead of timing out after the first format.
+          resolved = await _resolveUrl(song,
+                  qualityCeiling: ceiling, cancelToken: resolveToken)
+              .timeout(remote && sourceOf(song) == MusicSource.qq
+                  ? loadTimeout * 4
+                  : loadTimeout);
           if (!_isCurrent(request)) return;
           if (resolved == null) break;
-          final url = resolved.url;
+          final loadedAudio = resolved;
+          final url = loadedAudio.url;
           await _withPlayer(() async {
             if (!_isCurrent(request)) return;
             final AudioSource source;
@@ -556,8 +625,8 @@ class BujuanAudioHandler extends BaseAudioHandler
             mediaItem.add(loadedSong);
             _loaded = true;
             _loading = false;
-            qualityReport.value = resolved.report;
-            unawaited(_verifyAudio(resolved, request));
+            qualityReport.value = loadedAudio.report;
+            unawaited(_verifyAudio(loadedAudio, request));
             _lastPosition = _player.position;
             _lastProgress = DateTime.now();
             await _box.put(playByIndex, _curIndex);
@@ -569,6 +638,24 @@ class BujuanAudioHandler extends BaseAudioHandler
           return;
         } catch (error) {
           if (!_isCurrent(request)) return;
+          // A signed URL can still fail at the CDN or decoder. Move down on
+          // this same song rather than requesting the same failed format.
+          final returned = resolved?.report.returnedLevel;
+          final actual = returned == null ? null : AudioQuality.parse(returned);
+          if (remote &&
+              actual != null &&
+              AudioQualityPreferences(_box).playbackFallbackEnabled) {
+            final bound = ceiling != null && ceiling.index < actual.index
+                ? ceiling
+                : actual;
+            final lower = _lowerPlaybackQuality(song, bound);
+            if (lower != null) {
+              ceiling = lower;
+              attempt = 0;
+              continue;
+            }
+          }
+          attempt++;
           debugPrint(
               'Unable to load song ${song.id}, attempt $attempt: $error');
         }
@@ -584,7 +671,11 @@ class BujuanAudioHandler extends BaseAudioHandler
     _wantsPlay = false;
     await _player.stop();
     if (!_isCurrent(request)) return;
-    _broadcastState(state: AudioProcessingState.error, error: '当前播放列表没有可播放的歌曲');
+    _broadcastState(
+        state: AudioProcessingState.error,
+        error: AudioQualityPreferences(_box).playbackFallbackEnabled
+            ? '当前播放列表没有可播放的歌曲'
+            : '所选音质不可用，自动降级已关闭');
   }
 
   void _startPlaying() {
@@ -598,20 +689,54 @@ class BujuanAudioHandler extends BaseAudioHandler
   }
 
   Future<void> _recover() async {
-    if (_recovering ||
-        _loading ||
-        !_wantsPlay ||
-        queue.value.isEmpty ||
-        _disposed) return;
+    if (_loading || !_wantsPlay || queue.value.isEmpty || _disposed) return;
+    if (_recovering) {
+      // play() can fail immediately while the previous recovery is finishing.
+      _pendingRecoveryRequest = _request;
+      return;
+    }
     _recovering = true;
     try {
-      if (_recoveries++ == 0) {
-        await _load(_curIndex, playIt: true, position: _player.position);
-      } else {
+      final report = qualityReport.value;
+      final returned = report?.returnedLevel;
+      final allowFallback =
+          AudioQualityPreferences(_box).playbackFallbackEnabled;
+      final lower = allowFallback &&
+              _urlResolver == null &&
+              report?.local == false &&
+              returned != null
+          ? _lowerPlaybackQuality(
+              queue.value[_curIndex], AudioQuality.parse(returned))
+          : null;
+      if (lower != null) {
+        _recoveries = 0;
+        await _load(_curIndex,
+            playIt: true, position: _player.position, qualityCeiling: lower);
+      } else if (_recoveries++ == 0) {
+        await _load(_curIndex,
+            playIt: true,
+            position: _player.position,
+            qualityCeiling: !allowFallback || returned == null
+                ? null
+                : AudioQuality.parse(returned));
+      } else if (allowFallback) {
         await _advance();
+      } else {
+        final request = _request;
+        _wantsPlay = false;
+        _loaded = false;
+        await _withPlayer(() async {
+          if (_isCurrent(request)) await _player.stop();
+        });
+        if (_isCurrent(request))
+          _broadcastState(
+              state: AudioProcessingState.error, error: '所选音质播放失败，自动降级已关闭');
       }
     } finally {
       _recovering = false;
+      final pending = _pendingRecoveryRequest;
+      _pendingRecoveryRequest = null;
+      if (pending != null && _isCurrent(pending)) unawaited(_recover());
     }
   }
 
@@ -757,6 +882,8 @@ class BujuanAudioHandler extends BaseAudioHandler
     _radioRefilling = null;
     _radioRecent.clear();
     ++_request;
+    _qqResolveToken?.cancel('Playback stopped');
+    _qqResolveToken = null;
     _streamProbe?.close();
     _streamProbe = null;
     qualityReport.value = null;

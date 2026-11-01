@@ -213,7 +213,7 @@ class AudioStreamProbe {
           await request.close().timeout(const Duration(seconds: 8));
       if (response.statusCode != 206 &&
           !(offset == 0 && response.statusCode == 200)) {
-        throw const HttpException('音频片段读取失败');
+        throw HttpException('音频片段读取失败（HTTP ${response.statusCode}）');
       }
       if (response.statusCode == 206 &&
           !(response.headers.value(HttpHeaders.contentRangeHeader) ?? '')

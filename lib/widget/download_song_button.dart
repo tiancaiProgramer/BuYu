@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../common/downloads.dart';
 import '../common/audio_quality.dart';
+import '../common/audio_quality_preferences.dart';
 import 'adaptive_option_sheet.dart';
 import '../common/download_availability.dart';
 
@@ -42,8 +43,7 @@ class DownloadSongButton extends StatelessWidget {
   final MediaItem song;
   @override
   Widget build(BuildContext context) {
-    if (song.id.isEmpty || isLocalSong(song))
-      return const SizedBox.shrink();
+    if (song.id.isEmpty || isLocalSong(song)) return const SizedBox.shrink();
     final downloads = Downloads.instance;
     return AnimatedBuilder(
         animation: downloads,
@@ -74,7 +74,9 @@ class DownloadQualityPicker extends StatefulWidget {
 }
 
 class _DownloadQualityPickerState extends State<DownloadQualityPicker> {
-  late final Future<DownloadAvailability> availability =
+  late Future<DownloadAvailability> availability = _load();
+
+  Future<DownloadAvailability> _load() =>
       (widget.loader ?? DownloadAvailability.load)(widget.song)
           .timeout(const Duration(seconds: 10));
   @override
@@ -82,24 +84,42 @@ class _DownloadQualityPickerState extends State<DownloadQualityPicker> {
       future: availability,
       builder: (context, snapshot) {
         final downloads = Downloads.instance;
+        final data = snapshot.data;
+        final qualities = AudioQualityOptions.supported(
+                sourceOf(widget.song), AudioQualityUse.download)
+            .where((q) => data?.allowed == null || data!.allowed!.contains(q))
+            .toList();
         return AdaptiveOptionSheet(
             title: '选择下载音质',
             children: [
-              for (final quality in AudioQuality.values)
-                RadioListTile<AudioQuality>(
-                    title: Text(quality.label),
-                    subtitle: Text(snapshot.data?.labels[quality] ??
-                        (snapshot.connectionState == ConnectionState.done
-                            ? '资源信息暂不可用，下载时确认'
-                            : '正在查询官方资源…')),
-                    value: quality,
-                    toggleable: true,
-                    groupValue: downloads.defaultQuality,
-                    onChanged: snapshot.data?.allowed != null &&
-                            !snapshot.data!.allowed!.contains(quality)
-                        ? null
-                        : (_) => Navigator.pop(context, quality)),
+              if (snapshot.connectionState != ConnectionState.done)
+                const ListTile(
+                    title: Text('正在查询官方资源…'),
+                    trailing: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2)))
+              else if (snapshot.hasError || data == null)
+                ListTile(
+                    title: const Text('资源信息读取失败，点击重试'),
+                    trailing: const Icon(Icons.refresh),
+                    onTap: () => setState(() {
+                          availability = _load();
+                        }))
+              else if (qualities.isEmpty)
+                const ListTile(title: Text('当前歌曲暂无可用下载音质'))
+              else
+                for (final quality in qualities)
+                  RadioListTile<AudioQuality>(
+                      title: Text(quality.label),
+                      subtitle: Text(data.labels[quality] ?? '下载时按账号确认'),
+                      value: quality,
+                      toggleable: true,
+                      groupValue:
+                          downloads.defaultQualityFor(sourceOf(widget.song)),
+                      onChanged: (_) => Navigator.pop(context, quality)),
             ],
-            footer: Text('保存至：${downloads.folderLabel}\n${sourceOf(widget.song) == MusicSource.qq ? 'QQ资源按当前账号返回；不可用时回退音质，完成后显示实际规格' : '完成后显示实际音频规格'}'));
+            footer: Text(
+                '保存至：${downloads.folderLabel}\n仅显示当前歌曲可用档位。按所选音质下载，失败时提示，不自动降级。'));
       });
 }

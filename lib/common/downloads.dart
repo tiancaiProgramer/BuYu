@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/digests/md5.dart';
 import 'audio_quality.dart';
+import 'audio_quality_preferences.dart';
+import 'requested_audio_quality.dart';
 import 'music/music_source.dart';
 import 'music/qq_music.dart';
 import 'audio_stream_info.dart';
@@ -141,7 +143,8 @@ class Downloads extends ChangeNotifier {
       Future<DownloadSource> Function(MediaItem, AudioQuality)? resolve,
       Future<String> Function(File, String, MediaItem, String)? publish,
       Dio? dio,
-      void Function(DownloadJob)? onStatus})
+      void Function(DownloadJob)? onStatus,
+      this.allowUnverifiedQuality = false})
       : _directory = directory ??
             (() async => Directory(
                 '${(await getTemporaryDirectory()).path}/bujuan-downloads')),
@@ -166,6 +169,8 @@ class Downloads extends ChangeNotifier {
   static const folderNameKey = 'DOWNLOAD_FOLDER_NAME';
   AudioQuality get defaultQuality =>
       AudioQuality.parse(box.get(qualityKey, defaultValue: 'exhigh'));
+  AudioQuality defaultQualityFor(MusicSource source) =>
+      AudioQualityPreferences(box).get(source, AudioQualityUse.download);
   String get folderLabel => box.get(folderNameKey,
       defaultValue: const bool.fromEnvironment('BUYU_COEXIST')
           ? 'Music/BuYuPreview'
@@ -181,6 +186,8 @@ class Downloads extends ChangeNotifier {
   }
 
   final Box box;
+  // Diagnostics can test raw tiers that are hidden from normal download menus.
+  final bool allowUnverifiedQuality;
   final List<DownloadJob> jobs = [];
   final Future<Directory> Function() _directory;
   final Future<DownloadSource> Function(MediaItem, AudioQuality, CancelToken)
@@ -253,7 +260,13 @@ class Downloads extends ChangeNotifier {
       if (info is! Map || info['mid'] != song.extras?['mid'])
         throw StateError('QQ歌曲信息尚未确认');
       final track = QqMusic.song(info);
-      final source = await qq.audio(track, preferred, cancelToken: cancelToken);
+      final source = await qq.audio(track, preferred,
+          cancelToken: cancelToken, allowFallback: false);
+      if (source.quality != preferred &&
+          !(preferred == AudioQuality.higher &&
+              source.quality == AudioQuality.standard)) {
+        throw StateError('所选${preferred.label}不可用，下载未降低音质');
+      }
       final field = switch (source.quality) {
         AudioQuality.hires => 'size_hires',
         AudioQuality.lossless => 'size_flac',
@@ -265,7 +278,7 @@ class Downloads extends ChangeNotifier {
           size: size != null && size > 0 ? size : null,
           level: source.quality.name);
     }
-    for (final quality in preferred.fallbacks) {
+    for (final quality in [preferred]) {
       final metadata = DioMetaData(
           Uri.parse(
               'https://interface.music.163.com/eapi/song/enhance/download/url/v1'),
@@ -284,13 +297,17 @@ class Downloads extends ChangeNotifier {
       if (url is String &&
           url.isNotEmpty &&
           ['http', 'https'].contains(Uri.tryParse(url)?.scheme)) {
+        if (!await isRequestedNeteaseQuality(song.id, item, quality,
+            cancelToken: cancelToken)) {
+          throw StateError('所选${quality.label}不可用，下载未降低音质');
+        }
         return DownloadSource(url,
             size: item['size'] as int?,
             md5: item['md5'] as String?,
             level: item['level'] as String?);
       }
     }
-    throw StateError('当前歌曲或账号暂无可用下载资源');
+    throw StateError('所选${preferred.label}暂无可用下载资源，请重试或手动选择其他档位');
   }
 
   static const channel = MethodChannel('bujuan/downloads');
@@ -323,7 +340,7 @@ class Downloads extends ChangeNotifier {
   }
 
   DownloadJob? forSong(MediaItem song, {AudioQuality? quality}) {
-    quality ??= defaultQuality;
+    quality ??= defaultQualityFor(sourceOf(song));
     for (final job in jobs) {
       if (job.song.id == song.id && job.quality == quality) return job;
     }
@@ -331,7 +348,10 @@ class Downloads extends ChangeNotifier {
   }
 
   Future<void> add(MediaItem song, {AudioQuality? quality}) async {
-    quality ??= defaultQuality;
+    quality ??= defaultQualityFor(sourceOf(song));
+    if (!allowUnverifiedQuality)
+      quality = AudioQualityOptions.clamp(
+          sourceOf(song), AudioQualityUse.download, quality);
     if (isLocalSong(song) ||
         sourceOf(song) != MusicSource.qq && (int.tryParse(song.id) ?? 0) <= 0)
       throw StateError('本地歌曲无需下载');
@@ -379,64 +399,76 @@ class Downloads extends ChangeNotifier {
     return String.fromCharCodes(safe.runes.take(40));
   }
 
+  Future<(DownloadSource, AudioStreamInfo, int)> _receive(
+      DownloadJob job, AudioQuality quality, File temporary) async {
+    final source = await _resolve(job.song, quality, job.token);
+    job.resolvedQuality = source.level;
+    if (job.token.isCancelled) throw StateError('cancelled');
+    var last = DateTime(2000);
+    await _dio.download(source.url, temporary.path,
+        cancelToken: job.token,
+        options: Options(
+            receiveTimeout: const Duration(seconds: 30),
+            headers: {'Accept-Encoding': 'identity'}),
+        onReceiveProgress: (received, total) {
+      job.received = received;
+      job.total = total > 0 ? total : source.size ?? 0;
+      if (DateTime.now().difference(last).inMilliseconds >= 120) {
+        last = DateTime.now();
+        _notify();
+      }
+    });
+    if (job.token.isCancelled) throw StateError('cancelled');
+    final size = await temporary.length();
+    if (size == 0 ||
+        source.size != null && source.size! > 0 && size != source.size)
+      throw StateError('文件不完整，请重试');
+    if (source.md5 != null &&
+        RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(source.md5!)) {
+      final digest = MD5Digest();
+      await for (final chunk in temporary.openRead()) {
+        if (job.token.isCancelled) throw StateError('cancelled');
+        digest.update(Uint8List.fromList(chunk), 0, chunk.length);
+      }
+      final bytes = Uint8List(digest.digestSize);
+      digest.doFinal(bytes, 0);
+      if (bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join() !=
+          source.md5!.toLowerCase()) throw StateError('文件校验失败，请重试');
+    }
+    final handle = await temporary.open();
+    late List<int> prefix;
+    try {
+      prefix = await handle.read(65536);
+      final skip = AudioStreamInfo.id3Length(prefix);
+      if (skip >= prefix.length && skip < size) {
+        await handle.setPosition(skip);
+        prefix = await handle.read(65536);
+      }
+    } finally {
+      await handle.close();
+    }
+    final info = AudioStreamInfo.parse(prefix);
+    if (info == null) throw StateError('下载内容不是支持的音频文件');
+    if (job.quality == AudioQuality.hires &&
+        ((info.bits ?? 0) <= 16 && info.sampleRate <= 48000)) {
+      throw StateError('返回文件低于所选Hi-Res规格，未保存下载');
+    }
+    if (job.token.isCancelled) throw StateError('cancelled');
+    return (source, info, size);
+  }
+
   Future<void> _download(DownloadJob job) async {
     File? temporary;
     try {
       job.state = DownloadState.downloading;
       _notify();
       await _persist();
-      final source = await _resolve(job.song, job.quality, job.token);
-      job.resolvedQuality = source.level;
-      if (job.token.isCancelled) throw StateError('cancelled');
       final directory = await _directory();
       await directory.create(recursive: true);
       temporary = File('${directory.path}/${safeName(job.key)}.part');
-      var last = DateTime(2000);
-      await _dio.download(source.url, temporary.path,
-          cancelToken: job.token,
-          options: Options(
-              receiveTimeout: const Duration(seconds: 30),
-              headers: {'Accept-Encoding': 'identity'}),
-          onReceiveProgress: (received, total) {
-        job.received = received;
-        job.total = total > 0 ? total : source.size ?? 0;
-        if (DateTime.now().difference(last).inMilliseconds >= 120) {
-          last = DateTime.now();
-          _notify();
-        }
-      });
-      if (job.token.isCancelled) throw StateError('cancelled');
-      final size = await temporary.length();
-      if (size == 0 ||
-          source.size != null && source.size! > 0 && size != source.size)
-        throw StateError('文件不完整，请重试');
-      if (source.md5 != null &&
-          RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(source.md5!)) {
-        final digest = MD5Digest();
-        await for (final chunk in temporary.openRead()) {
-          if (job.token.isCancelled) throw StateError('cancelled');
-          digest.update(Uint8List.fromList(chunk), 0, chunk.length);
-        }
-        final bytes = Uint8List(digest.digestSize);
-        digest.doFinal(bytes, 0);
-        if (bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join() !=
-            source.md5!.toLowerCase()) throw StateError('文件校验失败，请重试');
-      }
-      final handle = await temporary.open();
-      late List<int> prefix;
-      try {
-        prefix = await handle.read(65536);
-        final skip = AudioStreamInfo.id3Length(prefix);
-        if (skip >= prefix.length && skip < size) {
-          await handle.setPosition(skip);
-          prefix = await handle.read(65536);
-        }
-      } finally {
-        await handle.close();
-      }
-      final info = AudioStreamInfo.parse(prefix);
-      if (info == null) throw StateError('下载内容不是支持的音频文件');
-      if (job.token.isCancelled) throw StateError('cancelled');
+      final received = await _receive(job, job.quality, temporary);
+      final info = received.$2;
+      final size = received.$3;
       final extension = info.format == 'FLAC' ? 'flac' : 'mp3';
       final name =
           '${safeName('${job.song.title} - ${job.song.artist ?? ''}')} [${safeName(job.song.id)}_${job.quality.name}].$extension';
@@ -463,7 +495,10 @@ class Downloads extends ChangeNotifier {
             ? error.message.toString()
             : error is MusicServiceError
                 ? error.message
-                : '下载失败，请检查网络后重试';
+                : error is DioException &&
+                        [403, 404, 410].contains(error.response?.statusCode)
+                    ? '所选${job.quality.label}资源不可用，请手动选择其他音质'
+                    : '下载失败，请重试；未自动降低音质';
       }
       job.finishedAt = DateTime.now();
       await _persist();

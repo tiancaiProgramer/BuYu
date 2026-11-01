@@ -1,4 +1,6 @@
 import 'common/music/qq_music.dart';
+import 'common/music/audio_quality_probe.dart';
+import 'common/music/audio_capability_probe.dart';
 import 'common/music/qq_discovery_probe.dart';
 import 'common/music/unified_library.dart';
 import 'common/music/favorites_auto_sync.dart';
@@ -197,6 +199,12 @@ Future<void> _initAudioServer(getIt) async {
       androidNotificationIcon: 'drawable/audio_service_icon',
     ),
   ));
+  if (const bool.fromEnvironment('BUYU_AUDIO_CAPABILITY_PROBE')) {
+    runAudioCapabilityProbe(qq, getIt<Box>());
+  }
+  if (const bool.fromEnvironment('BUYU_AUDIO_QUALITY_PROBE')) {
+    runAudioQualityProbe(qq, getIt<Box>());
+  }
 }
 
 Future<void> _initWindowManager() async {

@@ -1,3 +1,7 @@
+// Community maintenance and new features: tiancaiProgramer.
+import 'dart:async';
+import 'package:bujuan/common/music/qq_music.dart';
+import 'package:dio/dio.dart';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:bujuan/common/download_availability.dart';
@@ -12,6 +16,42 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'download_preferences_test.dart' show MemoryBox;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('QQ resource metadata cannot reintroduce globally unsupported tiers',
+      () async {
+    final dio = Dio();
+    dio.interceptors.add(InterceptorsWrapper(onRequest: (options, response) {
+      response.resolve(Response(requestOptions: options, data: {
+        'code': 0,
+        'req_0': {
+          'code': 0,
+          'data': {
+            'track_info': {
+              'mid': 'abc',
+              'file': {
+                'size_hires': 90000000,
+                'size_flac': 40000000,
+                'size_128mp3': 3000000,
+                'size_320mp3': 8000000
+              }
+            }
+          }
+        }
+      }));
+    }));
+    final qq = QqMusic(dio: dio);
+    GetIt.I.registerSingleton<QqMusic>(qq);
+    try {
+      final available = await DownloadAvailability.load(const MediaItem(
+          id: 'qq:abc', title: 'QQ', extras: {'source': 'qq', 'mid': 'abc'}));
+      expect(available.allowed,
+          {AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless});
+    } finally {
+      qq.dispose();
+      await GetIt.I.reset();
+    }
+  });
+
   test('official resource sizes and account download ceiling are kept distinct',
       () {
     final available = DownloadAvailability.parse({
@@ -27,10 +67,89 @@ void main() {
         {'id': 1, 'dl': 320000, 'downloadMaxBrLevel': 'exhigh'}
       ]
     }, '1');
-    expect(available.allowed,
-        {AudioQuality.standard, AudioQuality.higher, AudioQuality.exhigh});
+    expect(available.allowed, {AudioQuality.standard, AudioQuality.exhigh});
     expect(available.labels[AudioQuality.standard], contains('128 kbps'));
     expect(available.labels[AudioQuality.hires], '当前账号或歌曲暂不提供');
+  });
+  for (final hr in [
+    null,
+    <String, dynamic>{},
+    {'size': 0},
+    {'size': 70000000}
+  ]) {
+    test('Hi-Res download requires a listed positive resource: $hr', () {
+      final available = DownloadAvailability.parse({
+        'songs': [
+          {
+            'id': 1,
+            'l': {'size': 3000000},
+            'sq': {'size': 40000000},
+            'hr': hr
+          }
+        ],
+        'privileges': [
+          {'id': 1, 'dl': 999000, 'downloadMaxBrLevel': 'hires'}
+        ]
+      }, '1');
+      expect(available.allowed!.contains(AudioQuality.hires),
+          hr != null && (hr['size'] as num? ?? 0) > 0);
+      expect(available.allowed, contains(AudioQuality.lossless));
+    });
+  }
+  test('resources remain required when account ceiling is unspecified', () {
+    final available = DownloadAvailability.parse({
+      'songs': [
+        {
+          'id': 1,
+          'sq': {'size': 40000000}
+        }
+      ]
+    }, '1');
+    expect(available.allowed, {AudioQuality.lossless});
+  });
+  testWidgets(
+      'download picker hides absent tiers and does not offer unverified tiers',
+      (tester) async {
+    GetIt.I.registerSingleton<Box>(MemoryBox());
+    final pending = Completer<DownloadAvailability>();
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: DownloadQualityPicker(
+                song: const MediaItem(id: '1', title: '测试'),
+                loader: (_) {
+                  attempts++;
+                  if (attempts == 1) return pending.future;
+                  return Future.value(
+                      const DownloadAvailability({}, {AudioQuality.lossless}));
+                }))));
+    expect(find.text('Hi-Res'), findsNothing);
+    expect(find.byType(RadioListTile<AudioQuality>), findsNothing);
+    pending.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hi-Res'), findsNothing);
+    await tester.tap(find.text('资源信息读取失败，点击重试'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hi-Res'), findsNothing);
+    expect(find.text('无损'), findsOneWidget);
+    expect(find.byType(RadioListTile<AudioQuality>), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await GetIt.I.reset();
+  });
+  testWidgets('download picker offers Hi-Res only when available',
+      (tester) async {
+    GetIt.I.registerSingleton<Box>(MemoryBox());
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: DownloadQualityPicker(
+                song: const MediaItem(id: '1', title: '测试'),
+                loader: (_) async =>
+                    const DownloadAvailability({}, {AudioQuality.hires})))));
+    await tester.pumpAndSettle();
+    expect(find.text('Hi-Res'), findsOneWidget);
+    expect(find.text('无损'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await GetIt.I.reset();
   });
   testWidgets('tapping the default download quality submits that quality',
       (tester) async {

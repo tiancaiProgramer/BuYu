@@ -1,3 +1,5 @@
+import 'package:bujuan/common/audio_quality_preferences.dart';
+import 'package:bujuan/common/music/music_source.dart';
 import 'package:bujuan/common/audio_quality.dart';
 import 'package:bujuan/common/bujuan_audio_handler.dart';
 import 'package:bujuan/common/constants/colors.dart';
@@ -72,6 +74,12 @@ void main() {
               theme: AppTheme.light, home: const SettingViewL());
         }));
     await tester.pumpAndSettle();
+    final fallback=find.byKey(const ValueKey('playback-quality-fallback'));
+    await tester.ensureVisible(fallback);await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(fallback).value,isTrue);
+    await tester.tap(fallback);await tester.pumpAndSettle();
+    expect(AudioQualityPreferences(box).playbackFallbackEnabled,isFalse);
+    expect(box.get(Downloads.qualityKey),isNull);
     await tester
         .ensureVisible(find.byKey(const ValueKey('download-quality-setting')));
     await tester.pumpAndSettle();
@@ -79,7 +87,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hi-Res'));
     await tester.pumpAndSettle();
-    expect(box.get(Downloads.qualityKey), 'hires');
+    expect(AudioQualityPreferences(box).get(MusicSource.netease,AudioQualityUse.download),AudioQuality.hires);
+    expect(box.get(Downloads.qualityKey),isNull);
     expect(box.get(audioQualitySp), 'lossless');
     await tester.tap(find.byKey(const ValueKey('download-folder-setting')));
     await tester.pumpAndSettle();
