@@ -116,12 +116,13 @@ class NeteaseLibrary {
   Future<List<MediaItem>> favorites() async =>
       (await favoritesSnapshot()).songs;
 
-  Future<FavoritesSnapshot> favoritesSnapshot() async {
+  Future<FavoritesSnapshot> favoritesSnapshot({SourcePlaylist? target}) async {
     final bound = account;
     final selected = (await lists())
         .where(
-            (p) => owns(p) && (p.name ?? '').trim().toLowerCase() == 'buyu收藏')
+            (p) => owns(p) && (target == null ? (p.name ?? '').trim().toLowerCase() == 'buyu收藏' : p.id == target.id))
         .toList();
+    if (target != null && selected.isEmpty) throw const MusicServiceError('指定的网易云收藏歌单已删除或不可编辑，请重新选择');
     final songs = <String, MediaItem>{};
     final membership = <String>{};
     for (final list in selected) {

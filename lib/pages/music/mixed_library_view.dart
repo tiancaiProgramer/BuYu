@@ -1,3 +1,4 @@
+import 'favorite_targets_view.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 // Community maintenance and new features: tiancaiProgramer.
 import 'package:audio_service/audio_service.dart';
@@ -78,6 +79,7 @@ class _MixedLibraryViewState extends State<MixedLibraryView> {
             appBar: AppBar(
                 title: Text(widget.playlist?.name ?? folder?.name ?? '聚合收藏'),
                 actions: [
+                  if (widget.playlist == null && widget.folderId == null) IconButton(tooltip: "收藏歌单连接", icon: const Icon(Icons.link), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoriteTargetsView()))),
                   if (widget.playlist == null)
                     IconButton(
                         tooltip: '新建本地文件夹',

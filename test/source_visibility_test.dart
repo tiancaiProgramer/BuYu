@@ -39,6 +39,8 @@ class Account extends QqMusic {
   Future<List<MediaItem>> search(String keyword,
           {int page = 1, int limit = 20}) async =>
       [qqSong];
+  @override
+  Future<Map> rpc(String module, String method, Map<String, dynamic> param, {CancelToken? cancelToken, bool auth = false, String? expectedAccount}) async => {'body': {'album': {'list': []}, 'singer': {'list': []}, 'songlist': {'list': []}}};
   void setActive(bool value) {
     active = value;
     notifyListeners();
@@ -255,11 +257,11 @@ void main() {
       expect(netRequests, 0);
       home!.loginStatus.value = LoginStatus.login;
       await tester.pumpAndSettle();
-      expect(find.text('网易专辑'), findsOneWidget);
+      expect(find.text('双源专辑'), findsOneWidget);
       tester.widget<TabBar>(find.byType(TabBar)).controller!.index = 2;
       home!.loginStatus.value = LoginStatus.noLogin;
       await tester.pumpAndSettle();
-      expect(find.text('网易专辑'), findsNothing);
+      expect(find.text('专辑'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, 'QQ音乐'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

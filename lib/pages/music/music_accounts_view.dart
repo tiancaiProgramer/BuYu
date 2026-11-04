@@ -1,3 +1,4 @@
+import 'favorite_targets_view.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../widget/buyu_components.dart';
 import '../../widget/adaptive_option_sheet.dart';
@@ -178,9 +179,12 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                     subtitle: const Text('网易云与QQ音乐组合收藏'),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) => const MixedLibraryView()))),
+                ListTile(leading: const Icon(Icons.link), title: const Text('聚合收藏连接'),
+                    subtitle: const Text('分别指定QQ音乐、网易云的收藏歌单'),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoriteTargetsView()))),
                 ListTile(
                     leading: const Icon(TablerIcons.cloud_download),
-                    title: const Text('读取两平台BuYu收藏'),
+                    title: const Text('读取两平台连接的收藏歌单'),
                     subtitle: const Text('打开App及回到前台会自动核对，也可立即读取'),
                     onTap: () => libraryAction(context,
                         () => UnifiedLibrary.instance.refreshFromCloud(),

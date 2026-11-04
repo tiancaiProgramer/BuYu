@@ -106,6 +106,9 @@ Future<_Permissions> _open(WidgetTester tester, Size size,
                 child: const LocalView()));
       }));
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('音乐缓存'));
+  await tester.tap(find.text('音乐缓存'));
+  await tester.pumpAndSettle();
   await tester.ensureVisible(find.text('网易云缓存歌曲'));
   return state;
 }
@@ -155,7 +158,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(state.requests, [22]);
       expect(state.router.routes, isEmpty);
-      expect(find.text('尚未开启文件访问权限，暂时无法读取网易云缓存'), findsOneWidget);
+      expect(find.text('尚未开启文件访问权限，暂时无法读取音乐缓存'), findsOneWidget);
       await tester.tap(find.text('重新授权'));
       await tester.pumpAndSettle();
       final returned = Completer<void>();

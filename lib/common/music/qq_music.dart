@@ -289,7 +289,8 @@ class QqMusic extends ChangeNotifier {
     try {
       final response = await client.post<dynamic>(
           'https://u.y.qq.com/cgi-bin/musicu.fcg',
-          data: body,
+          data: module == 'music.search.SearchCgiService'
+              ? {module: body['req_0']} : body,
           queryParameters: {
             'g_tk': _csrf(key),
             'g_tk_new_20200303': _csrf(key),
@@ -305,7 +306,7 @@ class QqMusic extends ChangeNotifier {
           }));
       final raw =
           response.data is String ? jsonDecode(response.data) : response.data;
-      final item = raw is Map ? raw['req_0'] : null;
+      final item = raw is Map ? raw[module == 'music.search.SearchCgiService' ? module : 'req_0'] : null;
       if (raw is! Map ||
           raw['code'] != 0 ||
           item is! Map ||

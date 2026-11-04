@@ -1,3 +1,5 @@
+import '../../common/music/catalog_search.dart';
+import '../music/catalog_search_view.dart';
 import '../../common/app_style.dart';
 import '../music/mixed_search_view.dart';
 import '../music/source_access.dart';
@@ -9,15 +11,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
-import '../../common/netease_api/src/api/play/bean.dart';
 import '../../common/netease_api/src/api/search/bean.dart';
 import '../../common/netease_api/src/dio_ext.dart';
 import '../../common/netease_api/src/netease_handler.dart';
 import '../../widget/app_bar.dart';
 import '../../widget/custom_filed.dart';
 import '../../widget/mobile/flashy_navbar.dart';
-import '../../widget/request_widget/request_loadmore_view.dart';
-import '../play_list/playlist_view.dart';
 
 class SearchView extends StatefulWidget {
   const SearchView({Key? key, this.songSearch}) : super(key: key);
@@ -41,18 +40,8 @@ class _SearchViewState extends State<SearchView> with TickerProviderStateMixin {
         Tab(
           text: _access.sources.length > 1 ? '双源单曲' : '单曲',
         ),
-        if (_access.visibility.showNetease)
-          const Tab(
-            text: '网易歌单',
-          ),
-        if (_access.visibility.showNetease)
-          const Tab(
-            text: '网易专辑',
-          ),
-        if (_access.visibility.showNetease)
-          const Tab(
-            text: '网易歌手',
-          ),
+        for (final kind in CatalogKind.values)
+          Tab(text: '${_access.sources.length > 1 ? '双源' : ''}${kind.label}'),
       ];
   TabController? _tabController;
 
@@ -204,10 +193,8 @@ class _SearchViewState extends State<SearchView> with TickerProviderStateMixin {
                 controller: _tabController,
                 children: [
                   _buildSongSearchView(),
-                  if (_access.visibility.showNetease)
-                    _buildPlayListSearchView(),
-                  if (_access.visibility.showNetease) _buildAlbumSearchView(),
-                  if (_access.visibility.showNetease) _buildArtistsSearchView(),
+                  for (final kind in CatalogKind.values)
+                    CatalogSearchView(key: ValueKey(kind), query: searchContent, kind: kind),
                 ],
               )),
             ],
@@ -218,50 +205,4 @@ class _SearchViewState extends State<SearchView> with TickerProviderStateMixin {
   Widget _buildSongSearchView() =>
       MixedSongSearchView(query: searchContent, search: widget.songSearch);
 
-  Widget _buildPlayListSearchView() {
-    return RequestLoadMoreWidget<SearchPlaylistWrapX, Play>(
-      dioMetaData: searchSongDioMetaData(searchContent, 1000),
-      childBuilder: (List<Play> playlist) {
-        return ListView.builder(
-          padding: EdgeInsets.symmetric(horizontal: 20.w),
-          itemExtent: 120.w,
-          itemBuilder: (context, index) => PlayListItem(play: playlist[index]),
-          itemCount: playlist.length,
-        );
-      },
-      listKey: const ['result', 'playlists'],
-    );
-  }
-
-  Widget _buildAlbumSearchView() {
-    return RequestLoadMoreWidget<SearchAlbumsWrapX, Album>(
-      dioMetaData: searchSongDioMetaData(searchContent, 10),
-      childBuilder: (List<Album> playlist) {
-        return ListView.builder(
-          padding: EdgeInsets.symmetric(horizontal: 20.w),
-          itemExtent: 120.w,
-          itemBuilder: (context, index) =>
-              AlbumItem(index: index, album: playlist[index]),
-          itemCount: playlist.length,
-        );
-      },
-      listKey: const ['result', 'albums'],
-    );
-  }
-
-  Widget _buildArtistsSearchView() {
-    return RequestLoadMoreWidget<SearchArtistsWrapX, Artists>(
-      dioMetaData: searchSongDioMetaData(searchContent, 100),
-      childBuilder: (List<Artists> playlist) {
-        return ListView.builder(
-          itemExtent: 120.w,
-          padding: EdgeInsets.symmetric(horizontal: 20.w),
-          itemBuilder: (context, index) =>
-              ArtistsItem(index: index, artists: playlist[index]),
-          itemCount: playlist.length,
-        );
-      },
-      listKey: const ['result', 'artists'],
-    );
-  }
 }

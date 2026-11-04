@@ -219,9 +219,9 @@ void main() {
       await capture('local');
       expect(local.loading.value, isFalse);
       expect(find.text('本地SDCard歌曲'), findsOneWidget);
-      expect(find.text('网易云缓存歌曲'), findsOneWidget);
+      expect(find.text('音乐缓存'), findsOneWidget);
       expect(tester.getRect(find.text('本地SDCard歌曲')).center.dy,
-          tester.getRect(find.text('网易云缓存歌曲')).center.dy);
+          tester.getRect(find.text('音乐缓存')).center.dy);
       await mount(const SettingViewL());
       await capture('settings');
       final first = tester.getRect(find.text('适配横屏'));
