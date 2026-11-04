@@ -10,9 +10,11 @@
 
 ## 下载与安装
 
-当前版本 **BuYu 2.0.8（2125）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.8.2125)。
+当前版本 **BuYu 2.0.8-r2（2126）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.8-r2.2126)。
 
-本次增加双源歌单、专辑和歌手搜索，统一音乐缓存入口，并支持按平台、账号指定聚合收藏连接歌单，切换时可确认是否合并。完整回归 377 项通过、5 项联网检查默认跳过，已在 MIX Fold 3 覆盖安装验证账号与歌单保留、搜索及连接页。详见 [2125 发布说明](docs/releases/2.0.8-2125.md)。
+本次小修订将搜索分类统一为“单曲、歌单、专辑、歌手”，保留平台筛选，更新检查支持修订版本。详见 [2.0.8-r2说明](docs/releases/2.0.8-r2.md)。后续常规发布依次为2.0.9、2.0.10，文字等小改使用-r2、-r3。
+
+2125增加双源歌单、专辑和歌手搜索，统一音乐缓存入口，并支持按平台、账号指定聚合收藏连接歌单，切换时可确认是否合并。完整回归 377 项通过、5 项联网检查默认跳过，已在 MIX Fold 3 覆盖安装验证账号与歌单保留、搜索及连接页。详见 [2125 发布说明](docs/releases/2.0.8-2125.md)。
 
 **2124 更新**修复 QQ 高音质播放失败后不降级的问题，新增默认开启的“播放失败时自动降低音质”开关，两平台分别保存播放及下载音质。当前 BuYu 的 QQ 最高选项为无损，网易云保留 Hi-Res。下载严格按所选档位，失败提示、不降级；没有 Hi-Res 资源的歌曲隐藏该下载选项，资源查询失败可重试。完整自动回归 361 项通过，4 项默认联网检查跳过；MIX Fold 3 已实测播放、完整下载和缺失档位处理，详见 [2124 说明](docs/releases/2.0.8-2124.md)。
 
@@ -22,8 +24,8 @@
 
 | 安装包 | 适用设备 | 大小 |
 | --- | --- | --- |
-| [BuYu-2.0.8-2125-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2125/BuYu-2.0.8-2125-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
-| [BuYu-2.0.8-2125-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8.2125/BuYu-2.0.8-2125-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
+| [BuYu-2.0.8-r2-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8-r2.2126/BuYu-2.0.8-r2-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
+| [BuYu-2.0.8-r2-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8-r2.2126/BuYu-2.0.8-r2-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
 
 - 最低 Android 5.0；Android 4.4 尚未支持。
 - 交付 APK 与本次修复所用原 2.0.5 APK 签名一致，可覆盖升级并保留数据。

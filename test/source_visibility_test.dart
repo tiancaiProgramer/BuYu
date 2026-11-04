@@ -257,7 +257,7 @@ void main() {
       expect(netRequests, 0);
       home!.loginStatus.value = LoginStatus.login;
       await tester.pumpAndSettle();
-      expect(find.text('双源专辑'), findsOneWidget);
+      expect(find.text('专辑'), findsOneWidget);
       tester.widget<TabBar>(find.byType(TabBar)).controller!.index = 2;
       home!.loginStatus.value = LoginStatus.noLogin;
       await tester.pumpAndSettle();

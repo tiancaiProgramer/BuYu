@@ -16,6 +16,17 @@ Map<String, dynamic> release(String tag, List<String> names,
     };
 
 void main() {
+  test('repair revisions display and compare correctly while retaining legacy tags', () {
+    final r2 = AppReleaseVersion.fromTag('v2.0.8-r2.2126')!;
+    expect(r2.version, '2.0.8-r2'); expect(r2.build, 2126);
+    expect(r2.label, '2.0.8-r2 (2126)');
+    expect(r2.compareTo(AppReleaseVersion('2.0.8', 2125)), greaterThan(0));
+    expect(AppReleaseVersion('2.0.8-r10', 2134).compareTo(AppReleaseVersion('2.0.8-r2', 2126)), greaterThan(0));
+    expect(AppReleaseVersion('2.0.9', 2127).compareTo(r2), greaterThan(0));
+    expect(r2.compareTo(AppReleaseVersion('2.0.8-r2', 2126)), 0);
+    expect(AppReleaseVersion.fromTag('v2.0.8.2125')!.build, 2125);
+    expect(AppReleaseVersion.fromTag('v2.0.8-r2')!.version, '2.0.8-r2');
+  });
   test('versions compare numeric components and same-version build numbers',
       () {
     expect(

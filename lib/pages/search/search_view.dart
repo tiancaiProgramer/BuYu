@@ -38,10 +38,10 @@ class _SearchViewState extends State<SearchView> with TickerProviderStateMixin {
   ];
   List<Tab> get tabs => [
         Tab(
-          text: _access.sources.length > 1 ? '双源单曲' : '单曲',
+          text: '单曲',
         ),
         for (final kind in CatalogKind.values)
-          Tab(text: '${_access.sources.length > 1 ? '双源' : ''}${kind.label}'),
+          Tab(text: kind.label),
       ];
   TabController? _tabController;
 

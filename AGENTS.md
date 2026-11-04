@@ -13,3 +13,10 @@
 - 构建和发布脚本、Flutter 与项目依赖缓存放 `tools`；APK 放 `dist`；实机记录和迁移核验放 `testing`；旧版本及补丁放 `history`。签名材料仅在 `private-signing`，禁止提交或上传。
 - Android SDK/JDK 复用 `G:\Data\ApkFuture\Loading\shared-tools\android-build`；项目自己的日志、临时文件和缓存必须留在 BuYu 内。使用 `tools\Set-BuYuEnvironment.ps1` 初始化环境。
 - 历史压缩包、原始日志及核验记录中的旧地址保留原样，使用 `testing\migration-20261101` 的迁移清单定位；不将旧日志当作新构建或新实测。
+
+# 版本发布规则（2026-11-04 用户指定）
+
+- 常规功能发布 GitHub 时递增末段版本号，如 2.0.8 → 2.0.9 → 2.0.10。
+- 文字、描述等小修订使用当前版本的 -rN 后缀，如 2.0.8-r2、2.0.8-r3，不消耗下一常规版本号。
+- Android versionCode 每次产出可升级发行包均递增；版本标签保留内部号（如 v2.0.8-r2.2126），兼容旧版更新检查。
+- 搜索分类固定为“单曲、歌单、专辑、歌手”，来源通过原平台筛选区显示。

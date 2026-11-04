@@ -8,24 +8,26 @@ class AppReleaseVersion implements Comparable<AppReleaseVersion> {
   final int build;
 
   static AppReleaseVersion? fromTag(String tag) {
-    final match = RegExp(r'^v?(\d+\.\d+\.\d+)(.*)$').firstMatch(tag);
+    final match = RegExp(r'^v?(\d+\.\d+\.\d+)(?:-r([1-9]\d*))?(.*)$').firstMatch(tag);
     if (match == null) return null;
-    final suffix = RegExp(r'[.+](\d+)$').firstMatch(match.group(2)!);
+    final suffix = RegExp(r'[.+](\d+)$').firstMatch(match.group(3)!);
     return AppReleaseVersion(
-        match.group(1)!, int.tryParse(suffix?.group(1) ?? '') ?? 0);
+        '${match.group(1)}${match.group(2) == null ? '' : '-r${match.group(2)}'}', int.tryParse(suffix?.group(1) ?? '') ?? 0);
   }
 
   String get label => build > 0 ? '$version ($build)' : version;
 
   @override
   int compareTo(AppReleaseVersion other) {
-    final own = version.split('.').map(int.parse).toList();
-    final theirs = other.version.split('.').map(int.parse).toList();
+    final own = version.split('-r').first.split('.').map(int.parse).toList();
+    final theirs = other.version.split('-r').first.split('.').map(int.parse).toList();
     for (var i = 0; i < 3; i++) {
       final comparison = own[i].compareTo(theirs[i]);
       if (comparison != 0) return comparison;
     }
-    return build.compareTo(other.build);
+    int revision(String v) => int.tryParse(RegExp(r'-r(\d+)$').firstMatch(v)?.group(1) ?? '') ?? 0;
+    final repair = revision(version).compareTo(revision(other.version));
+    return repair != 0 ? repair : build.compareTo(other.build);
   }
 }
 

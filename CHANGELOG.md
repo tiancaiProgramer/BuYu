@@ -2,6 +2,14 @@
 
 当前维护者：**[tiancaiProgramer](https://github.com/tiancaiProgramer)**。后续新增功能及维护更新在对应版本条目中注明署名，原项目与第三方来源统一见 [CREDITS.md](CREDITS.md)。
 
+## 2.0.8-r2（2126）搜索分类文字修订
+
+维护与新增功能：tiancaiProgramer。
+
+- 搜索分类统一为单曲、歌单、专辑、歌手；平台筛选继续保留。
+- 更新检查支持-rN修订版本。常规发布递增末段版本号，小改使用修订后缀，Android内部版本号保持递增。
+- 25项相关回归通过，详见 [r2发布说明](docs/releases/2.0.8-r2.md)。
+
 ## 2.0.8+2125 双源分类搜索与收藏连接（正式版，2026-11-04）
 
 维护与新增功能：tiancaiProgramer。
