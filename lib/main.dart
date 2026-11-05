@@ -181,7 +181,7 @@ Future<void> _initAudioServer(getIt) async {
   await AppearanceStore(getIt<Box>()).migrate();
   await NeteaseMusicApi.init(debug: false);
   final qq = QqMusic.instance;
-  await qq.restore();
+  try { await qq.restore(); } catch (_) { /* Retry protected storage on the next QQ operation. */ }
   if (qq.loggedIn) qq.refreshProfile().catchError((_) {});
   if (const bool.fromEnvironment('BUYU_DISCOVERY_PROBE')) {
     runQqDiscoveryProbe(qq);

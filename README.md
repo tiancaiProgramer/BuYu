@@ -10,9 +10,11 @@
 
 ## 下载与安装
 
-当前版本 **BuYu 2.0.8-r2（2126）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.8-r2.2126)。
+当前版本 **BuYu 2.0.9（2127）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.9.2127)。
 
-本次小修订将搜索分类统一为“单曲、歌单、专辑、歌手”，保留平台筛选，更新检查支持修订版本。详见 [2.0.8-r2说明](docs/releases/2.0.8-r2.md)。后续常规发布依次为2.0.9、2.0.10，文字等小改使用-r2、-r3。
+本次修复QQ会话处理：明确鉴权失效后尝试同账号续期，临时读取失败不再删除加密会话，并补充重新认证提示。完整回归383项通过、5项联网检查默认跳过。自然过期尚未实机复现，旧凭据缺少续期资料时可能仍需重登一次，详见 [2.0.9发布说明](docs/releases/2.0.9-2127.md)。
+
+此前2.0.8-r2小修订将搜索分类统一为“单曲、歌单、专辑、歌手”，保留平台筛选，更新检查支持修订版本。详见 [2.0.8-r2说明](docs/releases/2.0.8-r2.md)。后续常规发布依次为2.0.9、2.0.10，文字等小改使用-r2、-r3。
 
 2125增加双源歌单、专辑和歌手搜索，统一音乐缓存入口，并支持按平台、账号指定聚合收藏连接歌单，切换时可确认是否合并。完整回归 377 项通过、5 项联网检查默认跳过，已在 MIX Fold 3 覆盖安装验证账号与歌单保留、搜索及连接页。详见 [2125 发布说明](docs/releases/2.0.8-2125.md)。
 
@@ -24,8 +26,8 @@
 
 | 安装包 | 适用设备 | 大小 |
 | --- | --- | --- |
-| [BuYu-2.0.8-r2-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8-r2.2126/BuYu-2.0.8-r2-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
-| [BuYu-2.0.8-r2-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.8-r2.2126/BuYu-2.0.8-r2-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
+| [BuYu-2.0.9-2127-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.9.2127/BuYu-2.0.9-2127-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
+| [BuYu-2.0.9-2127-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.9.2127/BuYu-2.0.9-2127-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
 
 - 最低 Android 5.0；Android 4.4 尚未支持。
 - 交付 APK 与本次修复所用原 2.0.5 APK 签名一致，可覆盖升级并保留数据。

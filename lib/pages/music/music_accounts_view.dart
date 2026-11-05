@@ -144,6 +144,7 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                                 if (mounted) setState(() {});
                               },
                         child: Text(busy ? '正在登录…' : '登录 / 切换'))),
+                if (qq.sessionNeedsLogin) ListTile(leading: const Icon(Icons.sync_problem), title: const Text('QQ登录凭据已失效'), subtitle: const Text('本地收藏已保留，可重新认证后恢复'), onTap: busy ? null : () => login(fresh: true)),
                 if (qq.loggedIn)
                   ListTile(
                       title: const Text('退出QQ音乐登录'),

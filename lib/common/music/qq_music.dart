@@ -6,19 +6,22 @@ import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../audio_quality.dart';
 import 'music_source.dart';
 
 /// Independent transport: QQ credentials are never sent through the Netease client.
-class QqMusic extends ChangeNotifier {
+class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   QqMusic({Dio? dio, this.channel = const MethodChannel('buyu/qqmusic')})
       : client = dio ??
             Dio(BaseOptions(
                 connectTimeout: const Duration(seconds: 10),
                 receiveTimeout: const Duration(seconds: 15),
-                sendTimeout: const Duration(seconds: 15)));
+                sendTimeout: const Duration(seconds: 15))) {
+    WidgetsBinding.instance.addObserver(this);
+  }
   static QqMusic get instance {
     if (!GetIt.I.isRegistered<QqMusic>())
       GetIt.I
@@ -26,9 +29,58 @@ class QqMusic extends ChangeNotifier {
     return GetIt.I<QqMusic>();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_restored && !_disposed) {
+      unawaited(restore().then((_) => _notify()).catchError((Object _) {}));
+    }
+  }
+
   final Dio client;
   final MethodChannel channel;
   Map<String, String> _cookies = {};
+  Map<String, dynamic> _refreshFields = {};
+  bool sessionNeedsLogin = false;
+  Future<bool>? _recovering;
+  Future<void> _sessionWrites = Future.value();
+  Future<void> _writeSession(Future<void> Function() operation) {
+    final next = _sessionWrites.then((_) => operation());
+    _sessionWrites = next.catchError((Object _) {});
+    return next;
+  }
+
+  DateTime? _lastRecovery;
+  static const _authCodes = {1000, 104400, 104401};
+  static const _refreshNames = {
+    'openid',
+    'unionid',
+    'access_token',
+    'refresh_token',
+    'refresh_key',
+    'expired_in'
+  };
+  static (Map<String, String>, Map<String, dynamic>) _session(String value) {
+    if (value.length > 65536) throw const MusicServiceError('QQ登录状态无效');
+    if (!value.trimLeft().startsWith('{')) return (parseCookies(value), {});
+    final raw = jsonDecode(value);
+    if (raw is! Map || raw['cookies'] is! String || raw['refresh'] is! Map)
+      throw const MusicServiceError('QQ登录状态无效');
+    return (
+      parseCookies(raw['cookies'] as String),
+      {
+        for (final name in _refreshNames)
+          if (raw['refresh'][name] is String || raw['refresh'][name] is num)
+            name: raw['refresh'][name],
+      }
+    );
+  }
+
+  static String _stored(
+          Map<String, String> cookies, Map<String, dynamic> refresh) =>
+      jsonEncode({
+        'cookies': cookies.entries.map((e) => '${e.key}=${e.value}').join('; '),
+        'refresh': refresh,
+      });
   bool _restored = false;
   bool _disposed = false;
   void _notify() {
@@ -43,11 +95,19 @@ class QqMusic extends ChangeNotifier {
   Box? get _profileBox => GetIt.I.isRegistered<Box>() ? GetIt.I<Box>() : null;
 
   static String profileAvatar(Map profile) {
-    for (final field in ['headpic', 'avatar', 'avatarUrl', 'logo', 'AvatarUrl']) {
+    for (final field in [
+      'headpic',
+      'avatar',
+      'avatarUrl',
+      'logo',
+      'AvatarUrl'
+    ]) {
       var value = '${profile[field] ?? ''}'.trim();
       if (value.startsWith('//')) value = 'https:$value';
       final uri = Uri.tryParse(value);
-      if (uri != null && ['http', 'https'].contains(uri.scheme) && uri.host.isNotEmpty) {
+      if (uri != null &&
+          ['http', 'https'].contains(uri.scheme) &&
+          uri.host.isNotEmpty) {
         return uri.replace(scheme: 'https').toString();
       }
     }
@@ -58,10 +118,9 @@ class QqMusic extends ChangeNotifier {
     nickname = clean(info['nick'] ?? info['nickname'] ?? 'QQ音乐');
     avatarUrl = profileAvatar(info);
     try {
-      await _profileBox?.put(profileCacheKey, {
-        'account': account, 'nickname': nickname, 'avatarUrl': avatarUrl
-      });
-    } catch (_) { /* Public profile caching must not invalidate a login. */ }
+      await _profileBox?.put(profileCacheKey,
+          {'account': account, 'nickname': nickname, 'avatarUrl': avatarUrl});
+    } catch (_) {/* Public profile caching must not invalidate a login. */}
   }
 
   Future<void> refreshProfile() async {
@@ -69,10 +128,14 @@ class QqMusic extends ChangeNotifier {
     if (!loggedIn || _disposed) return;
     final bound = account, revision = _profileRevision;
     final info = await _webProfile(Map.of(_cookies));
-    if (!loggedIn || _disposed || account != bound || revision != _profileRevision) return;
+    if (!loggedIn ||
+        _disposed ||
+        account != bound ||
+        revision != _profileRevision) return;
     await _saveProfile(info);
     if (loggedIn && account == bound && revision == _profileRevision) _notify();
   }
+
   List<SourcePlaylist> playlists = [];
   String get account => _account(_cookies);
   static String _account(Map<String, String> cookies) {
@@ -119,22 +182,32 @@ class QqMusic extends ChangeNotifier {
   }
 
   Future<void> _restore() async {
+    final revision = _profileRevision;
     try {
       final saved = await channel.invokeMethod<String>('readSession');
-      if (saved != null) _cookies = parseCookies(saved);
-      final cached = _profileBox?.get(profileCacheKey);
-      if (loggedIn && cached is Map && cached['account'] == account) {
-        nickname = '${cached['nickname'] ?? ''}';
-        avatarUrl = profileAvatar({'avatarUrl': cached['avatarUrl']});
+      if (_disposed || revision != _profileRevision) return;
+      if (saved != null) {
+        final decoded = _session(saved);
+        _cookies = decoded.$1;
+        _refreshFields = decoded.$2;
       }
-    } on MissingPluginException {
-      /* Non-Android previews have no persistent session. */
-    } on PlatformException {
-      _cookies = {};
-    } on MusicServiceError {
-      _cookies = {};
-    } finally {
       _restored = true;
+      try {
+        final cached = _profileBox?.get(profileCacheKey);
+        if (loggedIn && cached is Map && cached['account'] == account) {
+          nickname = '${cached['nickname'] ?? ''}';
+          avatarUrl = profileAvatar({'avatarUrl': cached['avatarUrl']});
+        }
+      } catch (_) {/* Public-profile cache cannot discard a valid session. */}
+    } on MissingPluginException {
+      _restored = true;
+    } on PlatformException {
+      // Temporary Keystore/read failures must remain retryable.
+      throw const MusicServiceError('QQ登录凭据暂时无法读取，请解锁手机后重试');
+    } on FormatException {
+      throw const MusicServiceError('QQ登录凭据格式异常，请重新认证');
+    } finally {
+      _restoring = null;
     }
   }
 
@@ -150,14 +223,31 @@ class QqMusic extends ChangeNotifier {
     return acceptSession(header);
   }
 
-  Future<bool> acceptSession(String header, {bool Function()? isCurrent}) async {
-    final candidate = parseCookies(header);
-    final candidateKey = candidate['qqmusic_key'] ?? candidate['qm_keyst'] ?? '';
-    if (_account(candidate).isEmpty || candidateKey.isEmpty) throw const MusicServiceError('请在QQ音乐官方页面完成登录');
+  Future<bool> acceptSession(String header,
+      {bool Function()? isCurrent}) async {
+    final decoded = _session(header);
+    final candidate = decoded.$1;
+    final revision = _profileRevision;
+    final candidateKey =
+        candidate['qqmusic_key'] ?? candidate['qm_keyst'] ?? '';
+    if (_account(candidate).isEmpty || candidateKey.isEmpty)
+      throw const MusicServiceError('请在QQ音乐官方页面完成登录');
     final info = await _webProfile(candidate);
-    if (isCurrent != null && !isCurrent()) return false;
-    await channel.invokeMethod<void>('saveSession', header);
+    if (_disposed ||
+        revision != _profileRevision ||
+        isCurrent != null && !isCurrent()) return false;
+    await _writeSession(() async {
+      if (_disposed ||
+          revision != _profileRevision ||
+          isCurrent != null && !isCurrent()) return;
+      await channel.invokeMethod<void>('saveSession', header);
+    });
+    if (_disposed ||
+        revision != _profileRevision ||
+        isCurrent != null && !isCurrent()) return false;
     _cookies = candidate;
+    _refreshFields = decoded.$2;
+    sessionNeedsLogin = false;
     _restored = true;
     ++_profileRevision;
     await _saveProfile(info);
@@ -167,11 +257,20 @@ class QqMusic extends ChangeNotifier {
   }
 
   Future<String> exchangeQrCode(String code) async {
-    final data = await _request({}, 'QQConnectLogin.LoginServer', 'QQLogin', {'code': code});
+    final data = await _request(
+        {}, 'QQConnectLogin.LoginServer', 'QQLogin', {'code': code});
     final uin = '${data['musicid'] ?? ''}';
     final musicKey = '${data['musickey'] ?? ''}';
-    if (!RegExp(r'^[1-9][0-9]*$').hasMatch(uin) || musicKey.isEmpty) throw const MusicServiceError('QQ扫码授权未返回音乐会话，请使用官方网页登录');
-    return 'qqmusic_uin=$uin; qqmusic_key=$musicKey; tmeLoginType=2';
+    if (!RegExp(r'^[1-9][0-9]*$').hasMatch(uin) || musicKey.isEmpty)
+      throw const MusicServiceError('QQ扫码授权未返回音乐会话，请使用官方网页登录');
+    return _stored({
+      'qqmusic_uin': uin,
+      'qqmusic_key': musicKey,
+      'tmeLoginType': '2'
+    }, {
+      for (final name in _refreshNames)
+        if (data[name] is String || data[name] is num) name: data[name]
+    });
   }
 
   Future<Map> _webProfile(Map<String, String> cookies) async {
@@ -205,7 +304,9 @@ class QqMusic extends ChangeNotifier {
           response.data is String ? jsonDecode(response.data) : response.data;
       if (raw is! Map || raw['code'] != 0 || raw['data'] is! Map) {
         final code = raw is Map && raw['code'] is num ? '（${raw['code']}）' : '';
-        throw MusicServiceError('QQ音乐网页会话校验未通过$code，请重新认证');
+        if (raw is Map && _authCodes.contains(raw['code']))
+          throw const QqAuthExpired();
+        throw MusicServiceError('QQ音乐网页会话校验未通过$code，请稍后重试');
       }
       final data = raw['data'] as Map;
       final creator = data['creator'];
@@ -237,12 +338,17 @@ class QqMusic extends ChangeNotifier {
 
   Future<void> logout() async {
     ++_profileRevision;
-    await channel.invokeMethod<void>('clearSession');
+    sessionNeedsLogin = false;
+    _refreshFields = {};
+    _lastRecovery = null;
+    await _writeSession(() => channel.invokeMethod<void>('clearSession'));
     _cookies = {};
     playlists = [];
     nickname = '';
     avatarUrl = '';
-    try { await _profileBox?.deleteAll([profileCacheKey]); } catch (_) {}
+    try {
+      await _profileBox?.deleteAll([profileCacheKey]);
+    } catch (_) {}
     _restored = true;
     _notify();
   }
@@ -256,11 +362,98 @@ class QqMusic extends ChangeNotifier {
   }
 
   Future<Map> rpc(String module, String method, Map<String, dynamic> param,
-      {CancelToken? cancelToken, bool auth = false, String? expectedAccount}) async {
+      {CancelToken? cancelToken,
+      bool auth = false,
+      String? expectedAccount}) async {
     await restore();
-    if(expectedAccount != null && account != expectedAccount) throw const MusicServiceError('QQ账号已切换，请刷新后重试');
-    return _request(Map.of(_cookies), module, method, param,
-        cancelToken: cancelToken, auth: auth);
+    if (expectedAccount != null && account != expectedAccount)
+      throw const MusicServiceError('QQ账号已切换，请刷新后重试');
+    final bound = account, usedKey = key;
+    try {
+      return await _request(Map.of(_cookies), module, method, param,
+          cancelToken: cancelToken, auth: auth);
+    } on QqAuthExpired {
+      if (bound.isNotEmpty &&
+          account == bound &&
+          (key != usedKey || await recoverSession()) &&
+          account == bound) {
+        if (expectedAccount != null && account != expectedAccount)
+          throw const MusicServiceError('QQ账号已切换');
+        return _request(Map.of(_cookies), module, method, param,
+            cancelToken: cancelToken, auth: auth);
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> recoverSession() {
+    if (_recovering != null) return _recovering!;
+    if (!loggedIn || _disposed) return Future.value(false);
+    if (_lastRecovery != null &&
+        DateTime.now().difference(_lastRecovery!) < const Duration(minutes: 1))
+      return Future.value(false);
+    _lastRecovery = DateTime.now();
+    final done = Completer<bool>();
+    _recovering = done.future;
+    () async {
+      var recovered = false;
+      final bound = account, revision = _profileRevision;
+      bool current() =>
+          !_disposed && account == bound && _profileRevision == revision;
+      try {
+        if ('${_refreshFields['refresh_key'] ?? ''}'.isNotEmpty ||
+            '${_refreshFields['refresh_token'] ?? ''}'.isNotEmpty) {
+          try {
+            final data = await _request(
+                Map.of(_cookies),
+                'music.login.LoginServer',
+                'Login',
+                {
+                  ..._refreshFields,
+                  'musicid': int.tryParse(bound) ?? 0,
+                  'str_musicid': bound,
+                  'musickey': key,
+                  'loginMode': 2,
+                },
+                auth: true);
+            final nextKey = '${data['musickey'] ?? ''}',
+                nextId = '${data['musicid'] ?? data['str_musicid'] ?? bound}';
+            if (nextKey.isNotEmpty && nextId == bound && current()) {
+              final next = Map<String, String>.of(_cookies)
+                ..['qqmusic_key'] = nextKey;
+              final refresh = Map<String, dynamic>.of(_refreshFields);
+              for (final name in _refreshNames) {
+                if (data[name] is String || data[name] is num)
+                  refresh[name] = data[name];
+              }
+              recovered = await acceptSession(_stored(next, refresh),
+                  isCurrent: current);
+            }
+          } catch (_) {/* A browser session may still recover this account. */}
+        }
+
+        if (!recovered && current()) {
+          final web = await channel.invokeMethod<String>('readWebSession');
+          if (web != null && current()) {
+            final candidate = _session(web).$1;
+            if (_account(candidate) == bound &&
+                (candidate['qqmusic_key'] ?? candidate['qm_keyst']) != key) {
+              recovered = await acceptSession(web, isCurrent: current);
+            }
+          }
+        }
+      } catch (_) {
+        /* Keep the last saved credentials; never erase on failed renewal. */
+      } finally {
+        if (current()) {
+          sessionNeedsLogin = !recovered;
+          _notify();
+        }
+        _recovering = null;
+        done.complete(recovered);
+      }
+    }();
+    return done.future;
   }
 
   Future<Map> _request(Map<String, String> cookies, String module,
@@ -290,7 +483,8 @@ class QqMusic extends ChangeNotifier {
       final response = await client.post<dynamic>(
           'https://u.y.qq.com/cgi-bin/musicu.fcg',
           data: module == 'music.search.SearchCgiService'
-              ? {module: body['req_0']} : body,
+              ? {module: body['req_0']}
+              : body,
           queryParameters: {
             'g_tk': _csrf(key),
             'g_tk_new_20200303': _csrf(key),
@@ -306,7 +500,15 @@ class QqMusic extends ChangeNotifier {
           }));
       final raw =
           response.data is String ? jsonDecode(response.data) : response.data;
-      final item = raw is Map ? raw[module == 'music.search.SearchCgiService' ? module : 'req_0'] : null;
+      final item = raw is Map
+          ? raw[module == 'music.search.SearchCgiService' ? module : 'req_0']
+          : null;
+      if (raw is Map && _authCodes.contains(raw['code']) ||
+          item is Map &&
+              (_authCodes.contains(item['code']) ||
+                  item['data'] is Map &&
+                      _authCodes.contains(item['data']['code'])))
+        throw const QqAuthExpired();
       if (raw is! Map ||
           raw['code'] != 0 ||
           item is! Map ||
@@ -437,6 +639,8 @@ class QqMusic extends ChangeNotifier {
           candidateToken.cancel('QQ audio quality request timed out');
           throw TimeoutException('QQ audio quality request timed out');
         });
+      } on QqAuthExpired {
+        rethrow;
       } on Exception {
         // An unavailable format or one failed request must not prevent trying
         // the remaining official formats. A cancelled selection must stop.
@@ -445,7 +649,8 @@ class QqMusic extends ChangeNotifier {
       }
       if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
       final entries = data['midurlinfo'];
-      if (entries is! List || entries.isEmpty || entries.first is! Map) continue;
+      if (entries is! List || entries.isEmpty || entries.first is! Map)
+        continue;
       final item = entries.first as Map;
       final purl = '${item['purl'] ?? ''}';
       if (purl.isEmpty || purl.contains('试听') || purl.startsWith('RS02'))
@@ -475,7 +680,7 @@ class QqMusic extends ChangeNotifier {
         _ => null
       };
       if (actual == null || actual.$1.index > quality.index) continue;
-      if(!allowFallback && !basename.startsWith(format.$1)) continue;
+      if (!allowFallback && !basename.startsWith(format.$1)) continue;
       return QqAudio(
           url.replace(scheme: 'https').toString(), actual.$1, actual.$2);
     }
@@ -515,7 +720,7 @@ class QqMusic extends ChangeNotifier {
     final data = await rpc('music.musicasset.PlaylistBaseRead',
         'GetPlaylistByUin', {'uin': account},
         auth: true);
-    if(account != bound) throw const MusicServiceError('QQ账号已切换，请重新加载歌单');
+    if (account != bound) throw const MusicServiceError('QQ账号已切换，请重新加载歌单');
     final lists = data['v_playlist'] ?? data['playlist'];
     if (lists is! List) throw const MusicServiceError('QQ音乐未返回歌单列表，请重试');
     String playlistId(Map p) {
@@ -652,10 +857,11 @@ class QqMusic extends ChangeNotifier {
     return created;
   }
 
-  Future<void> syncFavorite(
-      SourcePlaylist list, MediaItem track, bool add, {String? expectedAccount}) async {
+  Future<void> syncFavorite(SourcePlaylist list, MediaItem track, bool add,
+      {String? expectedAccount}) async {
     await restore();
-    if(expectedAccount != null && account != expectedAccount) throw const MusicServiceError('QQ账号已切换，请刷新后重试');
+    if (expectedAccount != null && account != expectedAccount)
+      throw const MusicServiceError('QQ账号已切换，请刷新后重试');
     final credentials = Map<String, String>.of(_cookies);
     final boundAccount = _account(credentials);
     final detail = await _request(credentials, 'music.pf_song_detail_svr',
@@ -731,6 +937,7 @@ class QqMusic extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     client.close(force: true);
     super.dispose();
@@ -741,4 +948,9 @@ class QqAudio {
   const QqAudio(this.url, this.quality, this.format);
   final String url, format;
   final AudioQuality quality;
+}
+
+/// Only explicit authentication codes enter recovery; permission/network failures do not.
+class QqAuthExpired extends MusicServiceError {
+  const QqAuthExpired() : super('QQ音乐登录凭据已失效，请重新认证；本地收藏和账号记录已保留');
 }
