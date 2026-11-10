@@ -91,6 +91,23 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
     }
   }
 
+  Future<void> checkQqRenewal() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final renewed = await qq.refreshSessionIfNeeded(force: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(renewed ? 'QQ登录续期成功' : '暂未完成续期，已保留当前登录。请检查网络，或重新认证。')));
+    } catch (_) {
+      if (mounted) setState(() => error = 'QQ登录续期暂未完成，请稍后重试');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: const Text('音乐账号与收藏')),
@@ -144,7 +161,28 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                                 if (mounted) setState(() {});
                               },
                         child: Text(busy ? '正在登录…' : '登录 / 切换'))),
-                if (qq.sessionNeedsLogin) ListTile(leading: const Icon(Icons.sync_problem), title: const Text('QQ登录凭据已失效'), subtitle: const Text('本地收藏已保留，可重新认证后恢复'), onTap: busy ? null : () => login(fresh: true)),
+                if (qq.sessionNeedsLogin)
+                  ListTile(
+                      leading: const Icon(Icons.sync_problem),
+                      title: const Text('QQ登录凭据已失效'),
+                      subtitle: const Text('本地收藏已保留，可重新认证后恢复'),
+                      onTap: busy ? null : () => login(fresh: true)),
+                if (qq.loggedIn && !qq.sessionNeedsLogin)
+                  ListTile(
+                      leading: const Icon(Icons.autorenew),
+                      title: Text(qq.automaticRenewalAvailable
+                          ? 'QQ登录自动续期'
+                          : '补齐QQ登录续期'),
+                      subtitle: Text(qq.automaticRenewalAvailable
+                          ? qq.hasVerifiedRenewal
+                              ? '自动续期已验证，点此再次检查'
+                              : '支持自动续期，点此检查'
+                          : '当前会话缺少续期凭据，点此重新认证'),
+                      onTap: busy
+                          ? null
+                          : qq.automaticRenewalAvailable
+                              ? checkQqRenewal
+                              : () => login(fresh: true)),
                 if (qq.loggedIn)
                   ListTile(
                       title: const Text('退出QQ音乐登录'),
@@ -180,9 +218,12 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                     subtitle: const Text('网易云与QQ音乐组合收藏'),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) => const MixedLibraryView()))),
-                ListTile(leading: const Icon(Icons.link), title: const Text('聚合收藏连接'),
+                ListTile(
+                    leading: const Icon(Icons.link),
+                    title: const Text('聚合收藏连接'),
                     subtitle: const Text('分别指定QQ音乐、网易云的收藏歌单'),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoriteTargetsView()))),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const FavoriteTargetsView()))),
                 ListTile(
                     leading: const Icon(TablerIcons.cloud_download),
                     title: const Text('读取两平台连接的收藏歌单'),

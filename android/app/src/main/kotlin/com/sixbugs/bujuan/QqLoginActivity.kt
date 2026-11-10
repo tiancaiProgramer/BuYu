@@ -18,6 +18,7 @@ class QqLoginActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var status: TextView
     private val handler = Handler(Looper.getMainLooper())
+    @Volatile
     private var completed = false
     private var ready = false
     private val sessionNames = QqWebSession.names
@@ -58,9 +59,23 @@ class QqLoginActivity : Activity() {
         }
         CookieManager.getInstance().apply { setAcceptCookie(true); setAcceptThirdPartyCookies(web,true) }
         web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest) = req.isForMainFrame && !official(req.url.toString())
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
+                if (captureAuthorization(req.url.toString())) return true
+                return req.isForMainFrame && !official(req.url.toString())
+            }
             @Deprecated("Legacy Android callback")
-            override fun shouldOverrideUrlLoading(view: WebView, url: String) = !official(url)
+            override fun shouldOverrideUrlLoading(view: WebView, url: String) = captureAuthorization(url) || !official(url)
+            override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
+                if (captureAuthorization(req.url.toString())) {
+                    // Stop the callback page consuming the one-use code and discarding
+                    // the JSON response. Dart completes the same official exchange.
+                    return WebResourceResponse("text/html", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
+                }
+                return null
+            }
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                captureAuthorization(url)
+            }
             override fun onPageFinished(view: WebView,url: String) { if (official(url)) check() }
             override fun onReceivedSslError(view: WebView,h: SslErrorHandler,error: SslError) {
                 h.cancel(); status.text = "官方网页证书验证失败，请检查网络和设备时间。"
@@ -85,6 +100,20 @@ class QqLoginActivity : Activity() {
                 web.loadUrl(startUrl); handler.postDelayed(poll,1500)
             }
         }
+    }
+    private fun captureAuthorization(url: String): Boolean {
+        val callback = QqLoginCallback.parse(url) ?: return false
+        handler.post {
+            if (!completed && ready) {
+                completed = true
+                val auth = org.json.JSONObject().put("code", callback.code).put("loginType", callback.loginType)
+                val result = org.json.JSONObject().put("authorization", auth).toString()
+                setResult(RESULT_OK, Intent().putExtra("cookies", result))
+                web.stopLoading()
+                finish()
+            }
+        }
+        return true
     }
     private fun check(report: Boolean = false) {
         if (!ready || completed || !official(web.url ?: "")) return

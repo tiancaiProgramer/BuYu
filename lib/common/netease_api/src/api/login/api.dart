@@ -12,19 +12,23 @@ import 'package:pointycastle/digests/md5.dart';
 mixin ApiLogin {
   DioMetaData loginProtectDioMetaData() {
     var params = {};
-    return DioMetaData(joinUri('/api/usersafe/loginprotect/status/get'), data: params, options: joinOptions());
+    return DioMetaData(joinUri('/api/usersafe/loginprotect/status/get'),
+        data: params, options: joinOptions());
   }
 
   /// 登录保护状态
   Future<ServerStatusBean> loginProtect() {
-    return Https.dioProxy.postUri(loginProtectDioMetaData()).then((Response value) {
+    return Https.dioProxy
+        .postUri(loginProtectDioMetaData())
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
   DioMetaData loginAnonimousDioMetaData() {
     var base64 = Base64Encoder();
-    var deviceId = Uri.encodeComponent(base64.convert(utf8.encode('null	a4:50:46:73:3a:57	a5914fdadb9b4cbb	5fe11acbc99b1fac')));
+    var deviceId = Uri.encodeComponent(base64.convert(utf8
+        .encode('null	a4:50:46:73:3a:57	a5914fdadb9b4cbb	5fe11acbc99b1fac')));
     var usernameRaw = '$deviceId 0wH6J2J5LpuzoSkpx6Kivg==';
 
     // TODO 等一个逆向大神~
@@ -33,20 +37,24 @@ mixin ApiLogin {
     // serialurl 为 com.netease.cloudmusic.NeteaseMusicUtils#serialurl native方法
     String username = base64.convert(utf8.encode(usernameRaw));
     var params = {'username': username};
-    return DioMetaData(joinUri('/api/register/anonimous'), data: params, options: joinOptions());
+    return DioMetaData(joinUri('/api/register/anonimous'),
+        data: params, options: joinOptions());
   }
 
   /// 匿名登录
   /// [username]
   Future<AnonimousLoginRet> loginAnonimous() {
-    return Https.dioProxy.postUri(loginAnonimousDioMetaData()).then((Response value) {
+    return Https.dioProxy
+        .postUri(loginAnonimousDioMetaData())
+        .then((Response value) {
       var ret = AnonimousLoginRet.fromJson(value.data);
       NeteaseMusicApi().usc.onAnonimousLogined(ret);
       return ret;
     });
   }
 
-  DioMetaData _cellPhoneLoginRequest(String phone, {String countryCode = '86', String? password, String? captcha}) {
+  DioMetaData _cellPhoneLoginRequest(String phone,
+      {String countryCode = '86', String? password, String? captcha}) {
     final params = <String, dynamic>{
       'type': '1',
       'https': 'true',
@@ -65,27 +73,42 @@ mixin ApiLogin {
         ));
   }
 
-  DioMetaData loginCellPhoneDioMetaData(String phone, String password, {String countryCode = '86'}) =>
-      _cellPhoneLoginRequest(phone, password: password, countryCode: countryCode);
+  DioMetaData loginCellPhoneDioMetaData(String phone, String password,
+          {String countryCode = '86'}) =>
+      _cellPhoneLoginRequest(phone,
+          password: password, countryCode: countryCode);
 
-  DioMetaData loginCellPhoneCaptchaDioMetaData(String phone, String captcha, {String countryCode = '86'}) =>
+  DioMetaData loginCellPhoneCaptchaDioMetaData(String phone, String captcha,
+          {String countryCode = '86'}) =>
       _cellPhoneLoginRequest(phone, captcha: captcha, countryCode: countryCode);
 
   /// Login with a code explicitly requested by the user. Never sends a password.
-  Future<NeteaseAccountInfoWrap> loginCellPhoneCaptcha(String phone, String captcha, {String countryCode = '86'}) async {
-    final response = await Https.dioProxy.postUri(loginCellPhoneCaptchaDioMetaData(phone, captcha, countryCode: countryCode));
+  Future<NeteaseAccountInfoWrap> loginCellPhoneCaptcha(
+      String phone, String captcha,
+      {String countryCode = '86'}) async {
+    final state = NeteaseMusicApi().usc;
+    final revision = state.sessionRevision;
+    final response = await Https.dioProxy.postUri(
+        loginCellPhoneCaptchaDioMetaData(phone, captcha,
+            countryCode: countryCode));
     final info = NeteaseAccountInfoWrap.fromJson(response.data);
-    await NeteaseMusicApi().usc.onLogined(info);
+    await state.onLogined(info, expectedRevision: revision);
     return info;
   }
 
   /// 手机号码登录
   /// [password] hex(md5(password))
   /// [countryCode] 国家区号
-  Future<NeteaseAccountInfoWrap> loginCellPhone(String phone, String password, {String countryCode = '86'}) {
-    return Https.dioProxy.postUri(loginCellPhoneDioMetaData(phone, password, countryCode: countryCode)).then((Response value) async {
+  Future<NeteaseAccountInfoWrap> loginCellPhone(String phone, String password,
+      {String countryCode = '86'}) {
+    final state = NeteaseMusicApi().usc;
+    final revision = state.sessionRevision;
+    return Https.dioProxy
+        .postUri(loginCellPhoneDioMetaData(phone, password,
+            countryCode: countryCode))
+        .then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      await NeteaseMusicApi().usc.onLogined(info);
+      await state.onLogined(info, expectedRevision: revision);
       return info;
     });
   }
@@ -98,27 +121,37 @@ mixin ApiLogin {
       'password': _encryptPassword(password),
       'rememberLogin': true,
     };
-    return DioMetaData(joinUri('/weapi/w/login'), data: params, options: joinOptions(userAgent: UserAgent.Pc, cookies: {'os': 'android'}));
+    return DioMetaData(joinUri('/weapi/w/login'),
+        data: params,
+        options:
+            joinOptions(userAgent: UserAgent.Pc, cookies: {'os': 'android'}));
   }
 
   /// 邮箱登录
   /// [password] hex(md5(password))
   Future<NeteaseAccountInfoWrap> loginEmail(String phone, String password) {
-    return Https.dioProxy.postUri(loginEmailDioMetaData(phone, password)).then((Response value) async {
+    final state = NeteaseMusicApi().usc;
+    final revision = state.sessionRevision;
+    return Https.dioProxy
+        .postUri(loginEmailDioMetaData(phone, password))
+        .then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
-      await NeteaseMusicApi().usc.onLogined(info);
+      await state.onLogined(info, expectedRevision: revision);
       return info;
     });
   }
 
   DioMetaData loginQrCodeKeyDioMetaData() {
     var params = {'type': 1, 'timerstamp': '${DateTime.now()}'};
-    return DioMetaData(joinUri('/weapi/login/qrcode/unikey'), data: params, options: joinOptions());
+    return DioMetaData(joinUri('/weapi/login/qrcode/unikey'),
+        data: params, options: joinOptions());
   }
 
   /// 二维码登录-申请key
   Future<QrCodeLoginKey> loginQrCodeKey() {
-    return Https.dioProxy.postUri(loginQrCodeKeyDioMetaData()).then((Response value) {
+    return Https.dioProxy
+        .postUri(loginQrCodeKeyDioMetaData())
+        .then((Response value) {
       return QrCodeLoginKey.fromJson(value.data);
     });
   }
@@ -140,20 +173,25 @@ mixin ApiLogin {
 
   /// 二维码登录-状态查询
   Future<ServerStatusBean> loginQrCodeCheck(String key) {
-    return Https.dioProxy.postUri(loginQrCodeCheckDioMetaData(key)).then((Response value) {
+    return Https.dioProxy
+        .postUri(loginQrCodeCheckDioMetaData(key))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
   DioMetaData loginAccountInfoDioMetaData() {
-    return DioMetaData(joinUri('/weapi/w/nuser/account/get'), data: {}, options: joinOptions());
+    return DioMetaData(joinUri('/weapi/w/nuser/account/get'),
+        data: {}, options: joinOptions());
   }
 
   /// 获取当前登录账号信息
   Future<NeteaseAccountInfoWrap> loginAccountInfo() {
     final state = NeteaseMusicApi().usc;
     final revision = state.sessionRevision;
-    return Https.dioProxy.postUri(loginAccountInfoDioMetaData()).then((Response value) async {
+    return Https.dioProxy
+        .postUri(loginAccountInfoDioMetaData())
+        .then((Response value) async {
       var info = NeteaseAccountInfoWrap.fromJson(value.data);
       await state.onLogined(info, expectedRevision: revision);
       return info;
@@ -168,8 +206,10 @@ mixin ApiLogin {
       s.code = RET_CODE_NEED_LOGIN;
       try {
         String body = value.data;
-        var profile = RegExp(r'GUser\s*=\s*([^;]+);').firstMatch(body)?.group(1);
-        var bindings = RegExp(r'GBinds\s*=\s*([^;]+);').firstMatch(body)?.group(1);
+        var profile =
+            RegExp(r'GUser\s*=\s*([^;]+);').firstMatch(body)?.group(1);
+        var bindings =
+            RegExp(r'GBinds\s*=\s*([^;]+);').firstMatch(body)?.group(1);
         if (profile != null && bindings != null) {
           s.code = RET_CODE_OK;
         }
@@ -187,12 +227,19 @@ mixin ApiLogin {
   /// 刷新token
   /// !需要登录
   /// [ServerStatusBean] code [RetCode]
-  Future<ServerStatusBean> loginRefresh({Dio? dio}) {
+  Future<ServerStatusBean> loginRefresh({Dio? dio, CancelToken? cancelToken}) {
     dio ??= Https.dio;
-    return dio.postUri(joinUri('/weapi/login/token/refresh'), data: {}, options: joinOptions(userAgent: UserAgent.Pc)).then((Response value) {
+    final state = NeteaseMusicApi().usc;
+    final revision = state.sessionRevision;
+    return dio
+        .postUri(joinUri('/weapi/login/token/refresh'),
+            data: {},
+            cancelToken: cancelToken,
+            options: joinOptions(userAgent: UserAgent.Pc))
+        .then((Response value) {
       // 刷新token接口set-cookie并不会返回最新token. 所以需要记录一个版本号，避免多次刷新
       var result = ServerStatusBean.fromJson(value.data);
-      if (result.code == RET_CODE_OK) {
+      if (result.code == RET_CODE_OK && state.sessionRevision == revision) {
         _loginRefreshVersion++;
       }
       return result;
@@ -200,95 +247,151 @@ mixin ApiLogin {
   }
 
   DioMetaData captchaSendDioMetaData(String phone, {String ctcode = '86'}) {
-    var params = {'ctcode': ctcode, 'cellphone': phone.trim(), 'secrete': 'music_middleuser_pclogin'};
-    return DioMetaData(joinUri('/weapi/sms/captcha/sent'), data: params, options: joinOptions());
+    var params = {
+      'ctcode': ctcode,
+      'cellphone': phone.trim(),
+      'secrete': 'music_middleuser_pclogin'
+    };
+    return DioMetaData(joinUri('/weapi/sms/captcha/sent'),
+        data: params, options: joinOptions());
   }
 
   /// 发送手机验证码
   /// [ctcode] 国家区号,默认86即中国
   Future<ServerStatusBean> captchaSend(String phone, {String ctcode = '86'}) {
-    return Https.dioProxy.postUri(captchaSendDioMetaData(phone, ctcode: ctcode)).then((Response value) {
+    return Https.dioProxy
+        .postUri(captchaSendDioMetaData(phone, ctcode: ctcode))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
-  DioMetaData captchaVerifyDioMetaData(String phone, String captcha, {String ctcode = '86'}) {
+  DioMetaData captchaVerifyDioMetaData(String phone, String captcha,
+      {String ctcode = '86'}) {
     var params = {'ctcode': ctcode, 'cellphone': phone, 'captcha': captcha};
-    return DioMetaData(joinUri('/weapi/sms/captcha/verify'), data: params, options: joinOptions());
+    return DioMetaData(joinUri('/weapi/sms/captcha/verify'),
+        data: params, options: joinOptions());
   }
 
   /// 检验手机验证码
   /// [ctcode] 国家区号,默认86即中国
   /// [captcha] 获取到的验证码
-  Future<ServerStatusBean> captchaVerify(String phone, String captcha, {String ctcode = '86'}) {
-    return Https.dioProxy.postUri(captchaVerifyDioMetaData(phone, captcha, ctcode: ctcode)).then((Response value) {
+  Future<ServerStatusBean> captchaVerify(String phone, String captcha,
+      {String ctcode = '86'}) {
+    return Https.dioProxy
+        .postUri(captchaVerifyDioMetaData(phone, captcha, ctcode: ctcode))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
-  DioMetaData registerCellPhoneDioMetaData(String phone, String password, String captcha, {String nickname = ''}) {
-    var params = {'phone': phone, 'password': _encryptPassword(password), 'captcha': captcha, 'nickname': nickname};
-    return DioMetaData(joinUri('/weapi/register/cellphone'), data: params, options: joinOptions());
+  DioMetaData registerCellPhoneDioMetaData(
+      String phone, String password, String captcha,
+      {String nickname = ''}) {
+    var params = {
+      'phone': phone,
+      'password': _encryptPassword(password),
+      'captcha': captcha,
+      'nickname': nickname
+    };
+    return DioMetaData(joinUri('/weapi/register/cellphone'),
+        data: params, options: joinOptions());
   }
 
   /// 注册账号（也可修改密码）
   /// [password] hex(md5(password))
   /// [captcha] 获取到的验证码
-  Future<ServerStatusBean> registerCellPhone(String phone, String password, String captcha, {String nickname = ''}) {
-    return Https.dioProxy.postUri(registerCellPhoneDioMetaData(phone, password, captcha, nickname: nickname)).then((Response value) {
+  Future<ServerStatusBean> registerCellPhone(
+      String phone, String password, String captcha,
+      {String nickname = ''}) {
+    return Https.dioProxy
+        .postUri(registerCellPhoneDioMetaData(phone, password, captcha,
+            nickname: nickname))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
-  DioMetaData checkCellPhoneExistenceDioMetaData(String phone, {String countrycode = ''}) {
+  DioMetaData checkCellPhoneExistenceDioMetaData(String phone,
+      {String countrycode = ''}) {
     var params = {'cellphone': phone, 'countrycode': countrycode};
-    return DioMetaData(joinUri('/eapi/cellphone/existence/check'), data: params, options: joinOptions(encryptType: EncryptType.EApi, eApiUrl: '/api/cellphone/existence/check'));
+    return DioMetaData(joinUri('/eapi/cellphone/existence/check'),
+        data: params,
+        options: joinOptions(
+            encryptType: EncryptType.EApi,
+            eApiUrl: '/api/cellphone/existence/check'));
   }
 
   /// 检测手机号码是否已注册
   /// [countryCode] 国家区号
-  Future<CellPhoneCheckExistenceRet> checkCellPhoneExistence(String phone, {String countrycode = ''}) {
-    return Https.dioProxy.postUri(checkCellPhoneExistenceDioMetaData(phone, countrycode: countrycode)).then((Response value) {
+  Future<CellPhoneCheckExistenceRet> checkCellPhoneExistence(String phone,
+      {String countrycode = ''}) {
+    return Https.dioProxy
+        .postUri(
+            checkCellPhoneExistenceDioMetaData(phone, countrycode: countrycode))
+        .then((Response value) {
       return CellPhoneCheckExistenceRet.fromJson(value.data);
     });
   }
 
   DioMetaData initNicknameDioMetaData(String nickname) {
     var params = {'nickname': nickname};
-    return DioMetaData(joinUri('/eapi/activate/initProfile'), data: params, options: joinOptions(encryptType: EncryptType.EApi, eApiUrl: '/api/activate/initProfile'));
+    return DioMetaData(joinUri('/eapi/activate/initProfile'),
+        data: params,
+        options: joinOptions(
+            encryptType: EncryptType.EApi,
+            eApiUrl: '/api/activate/initProfile'));
   }
 
   /// 刚注册的账号(需登录),调用此接口 ,可初始化昵称
   /// [nickname] 必须
   Future<ServerStatusBean> initNickname(String nickname) {
-    return Https.dioProxy.postUri(initNicknameDioMetaData(nickname)).then((Response value) {
+    return Https.dioProxy
+        .postUri(initNicknameDioMetaData(nickname))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
-  DioMetaData rebindCellPhoneDioMetaData(String phone, String captcha, String oldcaptcha, {String ctcode = '86'}) {
-    var params = {'phone': phone, 'captcha': captcha, 'oldcaptcha': oldcaptcha, 'ctcode': ctcode};
-    return DioMetaData(joinUri('/api/user/replaceCellphone'), data: params, options: joinOptions());
+  DioMetaData rebindCellPhoneDioMetaData(
+      String phone, String captcha, String oldcaptcha,
+      {String ctcode = '86'}) {
+    var params = {
+      'phone': phone,
+      'captcha': captcha,
+      'oldcaptcha': oldcaptcha,
+      'ctcode': ctcode
+    };
+    return DioMetaData(joinUri('/api/user/replaceCellphone'),
+        data: params, options: joinOptions());
   }
 
   /// 更换绑定手机(流程:先发送验证码到原手机号码,再发送验证码到新手机号码然后再调用此接口)
   /// [captcha] 获取到的验证码
   /// [oldcaptcha] 获取到的验证码
   /// [ctcode] 国家区号,默认86即中国
-  Future<ServerStatusBean> rebindCellPhone(String phone, String captcha, String oldcaptcha, {String ctcode = '86'}) {
-    return Https.dioProxy.postUri(rebindCellPhoneDioMetaData(phone, captcha, oldcaptcha, ctcode: ctcode)).then((Response value) {
+  Future<ServerStatusBean> rebindCellPhone(
+      String phone, String captcha, String oldcaptcha,
+      {String ctcode = '86'}) {
+    return Https.dioProxy
+        .postUri(rebindCellPhoneDioMetaData(phone, captcha, oldcaptcha,
+            ctcode: ctcode))
+        .then((Response value) {
       return ServerStatusBean.fromJson(value.data);
     });
   }
 
   DioMetaData logoutDioMetaData() {
-    return DioMetaData(joinUri('/weapi/logout'), data: {}, options: joinOptions());
+    return DioMetaData(joinUri('/weapi/logout'),
+        data: {}, options: joinOptions());
   }
 
   /// 退出登录
   /// !需要登录
   Future<ServerStatusBean> logout() {
-    return Https.dioProxy.postUri(logoutDioMetaData()).then((Response value) async {
+    return Https.dioProxy
+        .postUri(logoutDioMetaData())
+        .then((Response value) async {
       await NeteaseMusicApi().usc.onLogout();
       return ServerStatusBean.fromJson(value.data);
     });
@@ -296,5 +399,7 @@ mixin ApiLogin {
 }
 
 String _encryptPassword(String password) {
-  return Encrypted(MD5Digest().process(Uint8List.fromList(utf8.encode(password)))).base16;
+  return Encrypted(
+          MD5Digest().process(Uint8List.fromList(utf8.encode(password))))
+      .base16;
 }

@@ -10,9 +10,11 @@
 
 ## 下载与安装
 
-当前版本 **BuYu 2.0.9（2127）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.9.2127)。
+当前版本 **BuYu 2.0.10（2131）**：[发布页与校验文件](https://github.com/tiancaiProgramer/BuYu/releases/tag/v2.0.10.2131)。
 
-本次修复QQ会话处理：明确鉴权失效后尝试同账号续期，临时读取失败不再删除加密会话，并补充重新认证提示。完整回归383项通过、5项联网检查默认跳过。自然过期尚未实机复现，旧凭据缺少续期资料时可能仍需重登一次，详见 [2.0.9发布说明](docs/releases/2.0.9-2127.md)。
+本次补齐QQ按实际凭据续期，并优化网易云网络失败保留登录、并发刷新和重试上限。完整回归420项通过、5项联网检查默认跳过。QQ已实测换新密钥及重启保留；网易云本机刷新返回400但资料仍正常，不将此类失败误判为掉线。详见 [2.0.10发布说明](docs/releases/2.0.10-2131.md)。
+
+同一发布页附有 **2132网易云备用回退包**：只在2131出现网易云相关问题时使用，恢复修改前网易云逻辑，保留QQ2130修复；原签名和更高内部版本号可直接覆盖安装，无需卸载或清数据。正常使用请选择2131。回退说明、源码基线、校验清单及恢复工具随Release提供。
 
 此前2.0.8-r2小修订将搜索分类统一为“单曲、歌单、专辑、歌手”，保留平台筛选，更新检查支持修订版本。详见 [2.0.8-r2说明](docs/releases/2.0.8-r2.md)。后续常规发布依次为2.0.9、2.0.10，文字等小改使用-r2、-r3。
 
@@ -26,8 +28,8 @@
 
 | 安装包 | 适用设备 | 大小 |
 | --- | --- | --- |
-| [BuYu-2.0.9-2127-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.9.2127/BuYu-2.0.9-2127-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
-| [BuYu-2.0.9-2127-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.9.2127/BuYu-2.0.9-2127-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
+| [BuYu-2.0.10-2131-arm64.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.10.2131/BuYu-2.0.10-2131-arm64.apk) | ARM 64 位安卓手机和平板 | 约 13.9 MB |
+| [BuYu-2.0.10-2131-arm32.apk](https://github.com/tiancaiProgramer/BuYu/releases/download/v2.0.10.2131/BuYu-2.0.10-2131-arm32.apk) | 运行 32 位 ARM 系统的旧设备 | 约 13.7 MB |
 
 - 最低 Android 5.0；Android 4.4 尚未支持。
 - 交付 APK 与本次修复所用原 2.0.5 APK 签名一致，可覆盖升级并保留数据。
@@ -39,7 +41,7 @@
 - 共存测试版与正式版数据独立，不自动迁移测试版账号或本地分类；请在正式版重新登录，云端收藏可重新读取。
 - 双账号登录后可在“设置 → 音乐账号与收藏 → 主页头像来源”切换头像与昵称。
 
-完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版修复与验证范围见 [2.0.8（2125）说明](docs/releases/2.0.8-2125.md)，同步规则见 [2120 说明](docs/releases/2.0.8-2120.md)，双音源基础功能与未实现功能见 [2116 说明](docs/releases/2.0.8-2116.md)。
+完整迭代说明见 [CHANGELOG.md](CHANGELOG.md)，本版修复与验证范围见 [2.0.10说明](docs/releases/2.0.10-2131.md)，同步规则见 [2120 说明](docs/releases/2.0.8-2120.md)，双音源基础功能与未实现功能见 [2116 说明](docs/releases/2.0.8-2116.md)。
 
 ## 2.0.6 更新
 

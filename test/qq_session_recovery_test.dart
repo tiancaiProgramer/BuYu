@@ -2,6 +2,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:bujuan/common/music/qq_music.dart';
+import 'package:bujuan/common/audio_quality.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -13,17 +15,92 @@ void main() {
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
-  test('foreground retries a temporary protected-store failure without login', () async {
+  test(
+      'startup profile expiry updates account state even if playlist reads succeed',
+      () async {
+    messenger.setMockMethodCallHandler(
+        channel,
+        (c) async =>
+            c.method == 'readSession' ? 'uin=123; qqmusic_key=old' : null);
+    final dio = Dio()
+      ..interceptors.add(InterceptorsWrapper(
+          onRequest: (o, h) =>
+              h.resolve(Response(requestOptions: o, data: {'code': 1000}))));
+    final q = QqMusic(channel: channel, dio: dio);
+    await q.restore();
+    await expectLater(q.refreshProfile(), throwsA(isA<QqAuthExpired>()));
+    expect(q.sessionNeedsLogin, true);
+    expect(q.loggedIn, true);
+    q.dispose();
+  });
+  for (final state in ['expired', 'valid', 'network']) {
+    test('empty vkey is classified using profile state: $state', () async {
+      messenger.setMockMethodCallHandler(
+          channel,
+          (c) async => c.method == 'readSession'
+              ? 'uin=123; qqmusic_key=fixture'
+              : null);
+      final dio = Dio()
+        ..interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
+          if (o.method == 'GET') {
+            if (state == 'network') {
+              h.reject(DioException(
+                  requestOptions: o, type: DioExceptionType.connectionError));
+              return;
+            }
+            h.resolve(Response(
+                requestOptions: o,
+                data: state == 'expired'
+                    ? {'code': 1000}
+                    : {
+                        'code': 0,
+                        'data': {
+                          'creator': {'uin': '123'}
+                        }
+                      }));
+          } else {
+            h.resolve(Response(requestOptions: o, data: {
+              'code': 0,
+              'req_0': {
+                'code': 0,
+                'data': {
+                  'midurlinfo': [
+                    {'purl': ''}
+                  ]
+                }
+              }
+            }));
+          }
+        }));
+      final q = QqMusic(channel: channel, dio: dio);
+      const song = MediaItem(
+          id: 'qq:fixture', title: 'test', extras: {'mid': 'fixture'});
+      await expectLater(
+          q.audio(song, AudioQuality.standard, allowFallback: false),
+          throwsA(state == 'expired'
+              ? isA<QqAuthExpired>()
+              : isNot(isA<QqAuthExpired>())));
+      expect(q.sessionNeedsLogin, state == 'expired');
+      q.dispose();
+    });
+  }
+  test('foreground retries a temporary protected-store failure without login',
+      () async {
     var reads = 0;
     messenger.setMockMethodCallHandler(channel, (c) async {
-      if (c.method == 'readSession') { if (++reads == 1) throw PlatformException(code:'locked'); return 'uin=123; qqmusic_key=fixture'; }
+      if (c.method == 'readSession') {
+        if (++reads == 1) throw PlatformException(code: 'locked');
+        return 'uin=123; qqmusic_key=fixture';
+      }
       throw StateError('No login or clear should occur');
     });
-    final q=QqMusic(channel:channel);
+    final q = QqMusic(channel: channel);
     await expectLater(q.restore(), throwsA(isA<Exception>()));
     q.didChangeAppLifecycleState(AppLifecycleState.resumed);
-    await Future<void>.delayed(const Duration(milliseconds:10));
-    expect(q.loggedIn,true);expect(reads,2);q.dispose();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(q.loggedIn, true);
+    expect(reads, 2);
+    q.dispose();
   });
   test(
       'temporary protected-storage read failure retries without deleting credentials',

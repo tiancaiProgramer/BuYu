@@ -9,7 +9,6 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 
-import 'api/bean.dart';
 import 'api/dj/api.dart';
 import 'api/event/api.dart';
 import 'api/login/api.dart';
@@ -21,6 +20,7 @@ import 'api/user/api.dart';
 import 'dio_ext.dart';
 import 'netease_bean.dart';
 import 'netease_handler.dart';
+import 'session_recovery.dart';
 
 class NeteaseMusicApi
     with
@@ -35,15 +35,23 @@ class NeteaseMusicApi
 
   static late CookieManager cookieManager;
   static late PathProvider pathProvider;
+  static final _installed = Expando<List<Interceptor>>();
+  static Dio Function()? _refreshClientFactory;
 
-  static Future<bool> init({PathProvider? provider, bool debug = false}) async {
+  static Future<bool> init(
+      {PathProvider? provider,
+      bool debug = false,
+      Dio Function()? refreshClientFactory}) async {
     provider ??= PathProvider();
     pathProvider = provider;
 
     await provider.init();
 
-    cookieManager = CookieManager(
-        PersistCookieJar(storage: FileStorage(provider.getCookieSavedPath())));
+    _refreshClientFactory = refreshClientFactory;
+    cookieManager = NeteaseSessionCookies(
+        PersistCookieJar(storage: FileStorage(provider.getCookieSavedPath())),
+        revision: () => NeteaseMusicApi().usc.sessionRevision,
+        authenticated: () => NeteaseMusicApi().usc.isLogined);
 
     _initDio(Https.dio, debug, true);
     await NeteaseMusicApi().usc.init();
@@ -52,57 +60,56 @@ class NeteaseMusicApi
   }
 
   static Dio _initDio(Dio dio, bool debug, bool refreshToken) {
-    dio.interceptors.add(cookieManager);
-
-    dio.interceptors.add(InterceptorsWrapper(
-        onRequest: neteaseInterceptor,
-        onResponse:
-            (Response response, ResponseInterceptorHandler handler) async {
-          var requestOptions = response.requestOptions;
-
-          if (response.data is String) {
-            try {
-              response.data = jsonDecode(response.data);
-            } catch (e) {}
-          }
-          if (refreshToken &&
-              NeteaseMusicApi().usc.isLogined &&
-              response.data is Map) {
-            var result = ServerStatusBean.fromJson(response.data);
-            // 1. token已经更新，请求重试
-            // 2. token未更新
-            //    刷新token
-            //    1. 刷新成功，请求重试
-            //    2. 刷新失败，登录态切换
-            if (result.code == RET_CODE_NEED_LOGIN) {
+    for (final interceptor in _installed[dio] ?? <Interceptor>[]) {
+      dio.interceptors.remove(interceptor);
+    }
+    final installed = <Interceptor>[
+      cookieManager,
+      InterceptorsWrapper(
+          onRequest: neteaseInterceptor,
+          onResponse:
+              (Response response, ResponseInterceptorHandler handler) async {
+            if (response.data is String) {
               try {
-                if (requestOptions.extra['cookiesHash'] !=
-                    await loadCookiesHash()) {
-                  var newResponse = await dio.fetch(requestOptions);
-                  handler.next(newResponse);
-                  return;
-                }
-                // dio.lock();
-                var refreshResult = await NeteaseMusicApi()
-                    .loginRefresh(dio: _initDio(Dio(), debug, false));
-                // dio.unlock();
-                if (refreshResult.code == RET_CODE_OK) {
-                  var newResponse = await dio.fetch(requestOptions);
-                  handler.next(newResponse);
-                  return;
-                }
-              } catch (e) {} finally {
-                // dio.unlock();
-              }
-              await NeteaseMusicApi().usc.onLogout();
+                response.data = jsonDecode(response.data);
+              } catch (e) {}
             }
-          }
-
-          handler.next(response);
-        }));
+            handler.next(response);
+          })
+    ];
+    if (refreshToken) {
+      installed.add(NeteaseSessionRecovery(
+          dio: dio,
+          revision: () => NeteaseMusicApi().usc.sessionRevision,
+          authenticated: () => NeteaseMusicApi().usc.isLogined,
+          signature: (uri) => loadCookiesHash(host: uri),
+          official: (uri) => uri.scheme == 'https' && HOSTS.contains(uri.host),
+          invalidate: (revision) =>
+              NeteaseMusicApi().usc.onLogout(expectedRevision: revision),
+          refresh: () async {
+            final client = _refreshClientFactory?.call() ??
+                Dio(BaseOptions(
+                    connectTimeout: const Duration(seconds: 8),
+                    sendTimeout: const Duration(seconds: 8),
+                    receiveTimeout: const Duration(seconds: 10)));
+            final cancel = CancelToken();
+            try {
+              final response = await NeteaseMusicApi()
+                  .loginRefresh(
+                      dio: _initDio(client, false, false), cancelToken: cancel)
+                  .timeout(const Duration(seconds: 15), onTimeout: () {
+                cancel.cancel('网易云登录刷新超时');
+                throw TimeoutException('网易云登录刷新超时');
+              });
+              return response.code;
+            } finally {
+              client.close(force: true);
+            }
+          }));
+    }
 
     if (debug) {
-      dio.interceptors.add(PrettyDioLogger(
+      installed.add(PrettyDioLogger(
           requestHeader: true,
           requestBody: true,
           responseBody: true,
@@ -116,6 +123,8 @@ class NeteaseMusicApi
             }
           }));
     }
+    _installed[dio] = installed;
+    dio.interceptors.addAll(installed);
     return dio;
   }
 
@@ -171,8 +180,8 @@ class UserLoginStateController {
   }
 
   StreamSubscription listenLoginState(
-      void Function(
-          LoginState event, NeteaseAccountInfoWrap? accountInfoWrap) onChange) {
+      void Function(LoginState event, NeteaseAccountInfoWrap? accountInfoWrap)
+          onChange) {
     var controller = _controller;
     if (controller == null) {
       _controller = controller = StreamController.broadcast(sync: true);
@@ -182,27 +191,43 @@ class UserLoginStateController {
     });
   }
 
-  Future<void> onLogined(NeteaseAccountInfoWrap infoWrap, {int? expectedRevision}) async {
+  Future<void> onLogined(NeteaseAccountInfoWrap infoWrap,
+      {int? expectedRevision}) async {
     await init();
-    if (expectedRevision != null && expectedRevision != _sessionRevision) return;
+    if (expectedRevision != null && expectedRevision != _sessionRevision)
+      return;
     // Failed credentials and anonymous account responses are not a login.
-    if (infoWrap.code != RET_CODE_OK || infoWrap.profile == null ||
+    if (infoWrap.code != RET_CODE_OK ||
+        infoWrap.profile == null ||
         infoWrap.profile!.userId.isEmpty) return;
-    await _saveAccountInfo(infoWrap);
-    _accountInfo = infoWrap;
-    _refreshLoginState(LoginState.Logined);
+    final revision = _sessionRevision;
+    await NeteaseSessionWrites.run(() async {
+      if (revision != _sessionRevision) return;
+      await _saveAccountInfo(infoWrap);
+      if (revision != _sessionRevision) return;
+      if (!isLogined ||
+          _accountInfo?.profile?.userId != infoWrap.profile!.userId) {
+        ++_sessionRevision;
+      }
+      _accountInfo = infoWrap;
+      _refreshLoginState(LoginState.Logined);
+    });
   }
 
   void onAnonimousLogined(AnonimousLoginRet anonimousLoginRet) {
     _anonimousLoginRet = anonimousLoginRet;
   }
 
-  Future<void> onLogout() async {
+  Future<void> onLogout({int? expectedRevision}) async {
+    if (expectedRevision != null && expectedRevision != _sessionRevision)
+      return;
     ++_sessionRevision;
-    await deleteAllCookie();
     _accountInfo = null;
-    await _saveAccountInfo(null);
     _refreshLoginState(LoginState.Logout);
+    await NeteaseSessionWrites.run(() async {
+      await deleteAllCookie();
+      await _saveAccountInfo(null);
+    });
   }
 
   Future<void> _saveAccountInfo(NeteaseAccountInfoWrap? infoWrap) async {
@@ -214,7 +239,8 @@ class UserLoginStateController {
       var accountInfo = _saveFile().readAsStringSync();
 
       _accountInfo = NeteaseAccountInfoWrap.fromJson(jsonDecode(accountInfo));
-      if (_accountInfo!.code != RET_CODE_OK || _accountInfo!.profile == null ||
+      if (_accountInfo!.code != RET_CODE_OK ||
+          _accountInfo!.profile == null ||
           _accountInfo!.profile!.userId.isEmpty) {
         throw const FormatException('Invalid cached account');
       }
@@ -257,9 +283,11 @@ class PathProvider {
   var _dataPath = '';
 
   init() async {
-    if(PlatformUtils.isWeb) return;
-    _cookiePath = "${(await getApplicationSupportDirectory()).absolute.path}/zmusic/.cookies/";
-    _dataPath = "${(await getApplicationSupportDirectory()).absolute.path}/zmusic/.data/";
+    if (PlatformUtils.isWeb) return;
+    _cookiePath =
+        "${(await getApplicationSupportDirectory()).absolute.path}/zmusic/.cookies/";
+    _dataPath =
+        "${(await getApplicationSupportDirectory()).absolute.path}/zmusic/.data/";
   }
 
   String getCookieSavedPath() {

@@ -34,7 +34,13 @@ class MainActivity: AudioServiceActivity() {
                 when (call.method) {
                     "readSession" -> result.success(sessionStore.read())
                     "readWebSession" -> result.success(QqWebSession.read())
-                    "saveSession" -> { sessionStore.save(call.arguments as String); result.success(null) }
+                    "saveSession" -> {
+                        val session = call.arguments as String
+                        sessionStore.save(session)
+                        // Encrypted storage is authoritative; browser sync is best effort.
+                        try { QqWebSession.update(session) } catch (_: Exception) { }
+                        result.success(null)
+                    }
                     "clearSession" -> { sessionStore.clear(); QqWebSession.clear { result.success(null) } }
                     "login" -> if (qqResult != null) result.error("busy", "QQ登录页已打开", null) else {
                         qqResult = result

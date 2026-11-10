@@ -13,6 +13,7 @@ import 'package:pointycastle/export.dart' hide Algorithm;
 
 import 'encrypt_ext.dart';
 import 'netease_api.dart';
+import 'session_recovery.dart';
 
 /// [option.extra] 'hookRequestData' [bool] 是否对request body加密
 /// [option.extra] 'userAgent' [UserAgent]
@@ -46,10 +47,16 @@ void neteaseInterceptor(
           .write(' ;${Uri.encodeComponent(key)}=${Uri.encodeComponent(value)}');
     });
     option.headers[HttpHeaders.cookieHeader] = cookiesSb.toString();
-    option.extra['cookiesHash'] = await loadCookiesHash(cookies: cookies) +
-        NeteaseMusicApi().loginRefreshVersion;
+    option.extra['cookiesHash'] = await loadCookiesHash(cookies: cookies);
 
     if (!(option.extra['hookRequestDataSuccess'] ?? false)) {
+      if (option.data is Map &&
+          NeteaseMusicApi().usc.isLogined &&
+          !option.uri.pathSegments
+              .any((p) => ['login', 'logout', 'register'].contains(p))) {
+        option.extra[neteaseOriginalData] = Map.from(option.data);
+        option.extra[neteaseOriginalPath] = option.path;
+      }
       switch (option.extra['encryptType']) {
         case EncryptType.LinuxForward:
           _handleLinuxForward(option);
@@ -272,9 +279,14 @@ Future<List<Cookie>> loadCookies({Uri? host}) async {
   return (NeteaseMusicApi.cookieManager.cookieJar).loadForRequest(host);
 }
 
-Future<int> loadCookiesHash({List<Cookie>? cookies}) async {
-  cookies ??= await loadCookies();
-  int hash = hashList(cookies.map((e) => e.toString()));
+Future<int> loadCookiesHash({List<Cookie>? cookies, Uri? host}) async {
+  cookies ??= await loadCookies(host: host);
+  final values = cookies
+      .where((cookie) => ['MUSIC_U', 'MUSIC_A', '__csrf'].contains(cookie.name))
+      .map((e) => e.toString())
+      .toList()
+    ..sort();
+  int hash = hashList(values);
   int loginRefreshVersion = NeteaseMusicApi().loginRefreshVersion;
   return hash + loginRefreshVersion;
 }

@@ -11,11 +11,16 @@ import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../audio_quality.dart';
 import 'music_source.dart';
+import 'qq_session.dart';
 
 /// Independent transport: QQ credentials are never sent through the Netease client.
 class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
-  QqMusic({Dio? dio, this.channel = const MethodChannel('buyu/qqmusic')})
-      : client = dio ??
+  QqMusic(
+      {Dio? dio,
+      this.channel = const MethodChannel('buyu/qqmusic'),
+      DateTime Function()? now})
+      : _now = now ?? DateTime.now,
+        client = dio ??
             Dio(BaseOptions(
                 connectTimeout: const Duration(seconds: 10),
                 receiveTimeout: const Duration(seconds: 15),
@@ -31,17 +36,24 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_restored && !_disposed) {
-      unawaited(restore().then((_) => _notify()).catchError((Object _) {}));
+    if (state == AppLifecycleState.resumed && !_disposed) {
+      unawaited(refreshSessionIfNeeded()
+          .then((_) => _notify())
+          .catchError((Object _) {}));
     }
   }
 
   final Dio client;
   final MethodChannel channel;
+  final DateTime Function() _now;
+  Timer? _renewalTimer;
+  DateTime? _loadedAt, _retryRenewalAt;
   Map<String, String> _cookies = {};
   Map<String, dynamic> _refreshFields = {};
   bool sessionNeedsLogin = false;
   Future<bool>? _recovering;
+  bool _recoveryAuthFailed = false;
+  bool _renewalRejected = false;
   Future<void> _sessionWrites = Future.value();
   Future<void> _writeSession(Future<void> Function() operation) {
     final next = _sessionWrites.then((_) => operation());
@@ -51,14 +63,6 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   DateTime? _lastRecovery;
   static const _authCodes = {1000, 104400, 104401};
-  static const _refreshNames = {
-    'openid',
-    'unionid',
-    'access_token',
-    'refresh_token',
-    'refresh_key',
-    'expired_in'
-  };
   static (Map<String, String>, Map<String, dynamic>) _session(String value) {
     if (value.length > 65536) throw const MusicServiceError('QQ登录状态无效');
     if (!value.trimLeft().startsWith('{')) return (parseCookies(value), {});
@@ -67,11 +71,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
       throw const MusicServiceError('QQ登录状态无效');
     return (
       parseCookies(raw['cookies'] as String),
-      {
-        for (final name in _refreshNames)
-          if (raw['refresh'][name] is String || raw['refresh'][name] is num)
-            name: raw['refresh'][name],
-      }
+      QqSessionMetadata.read(raw['refresh'] as Map)
     );
   }
 
@@ -126,8 +126,20 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> refreshProfile() async {
     await restore();
     if (!loggedIn || _disposed) return;
+    await refreshSessionIfNeeded();
     final bound = account, revision = _profileRevision;
-    final info = await _webProfile(Map.of(_cookies));
+    Map info;
+    try {
+      info = await _webProfile(Map.of(_cookies));
+    } on QqAuthExpired {
+      if (loggedIn &&
+          !_disposed &&
+          account == bound &&
+          revision == _profileRevision) {
+        if (await recoverSession()) return;
+      }
+      rethrow;
+    }
     if (!loggedIn ||
         _disposed ||
         account != bound ||
@@ -152,6 +164,17 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool get loggedIn => account.isNotEmpty && key.isNotEmpty;
+  int get _loginType =>
+      int.tryParse(_cookies['tmeLoginType'] ?? '') ??
+      (key.startsWith('W_X') ? 1 : 2);
+  // QQ web sessions also support the official music-key exchange, without a
+  // separate refresh token. Do not mislabel these accounts as incomplete.
+  bool get automaticRenewalAvailable =>
+      loggedIn &&
+      (QqSessionMetadata.renewable(_refreshFields) || _loginType == 2);
+  bool get hasVerifiedRenewal =>
+      loggedIn &&
+      QqSessionMetadata.seconds(_refreshFields['lastRenewalAt']) > 0;
   String get key => _cookies['qqmusic_key'] ?? _cookies['qm_keyst'] ?? '';
   static Map<String, String> parseCookies(String header) {
     if (header.length > 65536 || RegExp(r'[\r\n\x00]').hasMatch(header))
@@ -192,6 +215,8 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
         _refreshFields = decoded.$2;
       }
       _restored = true;
+      _loadedAt ??= _now();
+      _scheduleRenewal();
       try {
         final cached = _profileBox?.get(profileCacheKey);
         if (loggedIn && cached is Map && cached['account'] == account) {
@@ -213,18 +238,39 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> login({bool fresh = false}) async {
     await restore();
+    final loginRevision = _profileRevision;
     // Retry a completed official browser login after validation/network failure.
     // It remains untrusted until the authenticated web endpoint accepts it.
     final cached = !fresh && !loggedIn
         ? await channel.invokeMethod<String>('readWebSession')
         : null;
     final header = cached ?? await channel.invokeMethod<String>('login');
-    if (header == null) return false;
+    if (header == null || _disposed || loginRevision != _profileRevision)
+      return false;
+    if (header.trimLeft().startsWith('{')) {
+      final raw = jsonDecode(header);
+      if (raw is Map && raw['authorization'] is Map) {
+        final auth = raw['authorization'] as Map;
+        final code = auth['code'];
+        final type = auth['loginType'];
+        if (code is! String ||
+            code.isEmpty ||
+            code.length > 4096 ||
+            ![1, 2].contains(type))
+          throw const MusicServiceError('QQ音乐授权返回无效，请重新认证');
+        final revision = _profileRevision;
+        final issued = type == 2
+            ? await exchangeQrCode(code)
+            : await _exchangeWechatCode(code);
+        if (_disposed || revision != _profileRevision) return false;
+        return acceptSession(issued);
+      }
+    }
     return acceptSession(header);
   }
 
   Future<bool> acceptSession(String header,
-      {bool Function()? isCurrent}) async {
+      {bool Function()? isCurrent, bool preserveLibrary = false}) async {
     final decoded = _session(header);
     final candidate = decoded.$1;
     final revision = _profileRevision;
@@ -236,22 +282,31 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
     if (_disposed ||
         revision != _profileRevision ||
         isCurrent != null && !isCurrent()) return false;
+    final refresh = Map<String, dynamic>.of(decoded.$2);
+    refresh.putIfAbsent(
+        'receivedAt', () => _now().millisecondsSinceEpoch ~/ 1000);
+    final stored = _stored(candidate, refresh);
     await _writeSession(() async {
       if (_disposed ||
           revision != _profileRevision ||
           isCurrent != null && !isCurrent()) return;
-      await channel.invokeMethod<void>('saveSession', header);
+      await channel.invokeMethod<void>('saveSession', stored);
     });
     if (_disposed ||
         revision != _profileRevision ||
         isCurrent != null && !isCurrent()) return false;
     _cookies = candidate;
-    _refreshFields = decoded.$2;
+    _refreshFields = refresh;
+    _loadedAt = _now();
+    _lastRecovery = null;
+    _retryRenewalAt = _now().add(const Duration(minutes: 1));
     sessionNeedsLogin = false;
+    _renewalRejected = false;
     _restored = true;
     ++_profileRevision;
+    _scheduleRenewal();
     await _saveProfile(info);
-    playlists = [];
+    if (!preserveLibrary) playlists = [];
     _notify();
     return true;
   }
@@ -259,18 +314,26 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   Future<String> exchangeQrCode(String code) async {
     final data = await _request(
         {}, 'QQConnectLogin.LoginServer', 'QQLogin', {'code': code});
-    final uin = '${data['musicid'] ?? ''}';
+    return _issuedSession(data, 2);
+  }
+
+  Future<String> _exchangeWechatCode(String code) async {
+    final data = await _request({}, 'music.login.LoginServer', 'Login',
+        {'code': code, 'strAppid': 'wx48db31d50e334801'},
+        loginType: 1);
+    return _issuedSession(data, 1);
+  }
+
+  String _issuedSession(Map data, int loginType) {
+    final uin = '${data['musicid'] ?? data['str_musicid'] ?? ''}';
     final musicKey = '${data['musickey'] ?? ''}';
     if (!RegExp(r'^[1-9][0-9]*$').hasMatch(uin) || musicKey.isEmpty)
       throw const MusicServiceError('QQ扫码授权未返回音乐会话，请使用官方网页登录');
     return _stored({
       'qqmusic_uin': uin,
       'qqmusic_key': musicKey,
-      'tmeLoginType': '2'
-    }, {
-      for (final name in _refreshNames)
-        if (data[name] is String || data[name] is num) name: data[name]
-    });
+      'tmeLoginType': '$loginType'
+    }, QqSessionMetadata.issued(data, _now()));
   }
 
   Future<Map> _webProfile(Map<String, String> cookies) async {
@@ -339,8 +402,12 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> logout() async {
     ++_profileRevision;
     sessionNeedsLogin = false;
+    _renewalRejected = false;
     _refreshFields = {};
     _lastRecovery = null;
+    _renewalTimer?.cancel();
+    _retryRenewalAt = null;
+    _loadedAt = null;
     await _writeSession(() => channel.invokeMethod<void>('clearSession'));
     _cookies = {};
     playlists = [];
@@ -366,6 +433,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
       bool auth = false,
       String? expectedAccount}) async {
     await restore();
+    await refreshSessionIfNeeded();
     if (expectedAccount != null && account != expectedAccount)
       throw const MusicServiceError('QQ账号已切换，请刷新后重试');
     final bound = account, usedKey = key;
@@ -379,41 +447,108 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
           account == bound) {
         if (expectedAccount != null && account != expectedAccount)
           throw const MusicServiceError('QQ账号已切换');
-        return _request(Map.of(_cookies), module, method, param,
-            cancelToken: cancelToken, auth: auth);
+        final retryKey = key;
+        try {
+          return await _request(Map.of(_cookies), module, method, param,
+              cancelToken: cancelToken, auth: auth);
+        } on QqAuthExpired {
+          if (account == bound && key == retryKey) {
+            sessionNeedsLogin = true;
+            _notify();
+          }
+          rethrow;
+        }
       }
       rethrow;
     }
   }
 
-  Future<bool> recoverSession() {
+  /// Lifetime-driven renewal is also checked after suspension and before requests.
+  Future<bool> refreshSessionIfNeeded({bool force = false}) async {
+    await restore();
+    if (!loggedIn || _disposed) return false;
+    if (sessionNeedsLogin && _renewalRejected && !force) return false;
+    final now = _now();
+    final due = QqSessionMetadata.renewalAt(_refreshFields, _loadedAt ?? now);
+    if (!force && _retryRenewalAt != null && now.isBefore(_retryRenewalAt!))
+      return !sessionNeedsLogin;
+    if (sessionNeedsLogin) return recoverSession();
+    if (!force && now.isBefore(due)) return true;
+    return recoverSession(authenticationFailed: false);
+  }
+
+  void _scheduleRenewal() {
+    _renewalTimer?.cancel();
+    if (_disposed ||
+        !loggedIn ||
+        sessionNeedsLogin && (_renewalRejected || !automaticRenewalAvailable))
+      return;
+    final now = _now();
+    var target = QqSessionMetadata.renewalAt(_refreshFields, _loadedAt ?? now);
+    if (sessionNeedsLogin)
+      target = _retryRenewalAt ?? now.add(const Duration(minutes: 5));
+    if (_retryRenewalAt != null && target.isBefore(_retryRenewalAt!))
+      target = _retryRenewalAt!;
+    final delay = target.difference(now).inMilliseconds.clamp(1000, 86400000);
+    _renewalTimer = Timer(Duration(milliseconds: delay), () {
+      unawaited(refreshSessionIfNeeded()
+          .catchError((Object _) => false)
+          .whenComplete(_scheduleRenewal));
+    });
+  }
+
+  Future<bool> recoverSession({bool authenticationFailed = true}) {
+    if (authenticationFailed) _recoveryAuthFailed = true;
     if (_recovering != null) return _recovering!;
     if (!loggedIn || _disposed) return Future.value(false);
     if (_lastRecovery != null &&
-        DateTime.now().difference(_lastRecovery!) < const Duration(minutes: 1))
+        _now().difference(_lastRecovery!) < const Duration(minutes: 1)) {
+      if (authenticationFailed) {
+        sessionNeedsLogin = true;
+        _notify();
+      }
       return Future.value(false);
-    _lastRecovery = DateTime.now();
+    }
+    _lastRecovery = _now();
+    _recoveryAuthFailed = authenticationFailed;
     final done = Completer<bool>();
     _recovering = done.future;
     () async {
       var recovered = false;
+      var renewalRejected = false;
       final bound = account, revision = _profileRevision;
       bool current() =>
           !_disposed && account == bound && _profileRevision == revision;
       try {
-        if ('${_refreshFields['refresh_key'] ?? ''}'.isNotEmpty ||
-            '${_refreshFields['refresh_token'] ?? ''}'.isNotEmpty) {
+        {
           try {
+            final renewable = QqSessionMetadata.renewable(_refreshFields);
+            final connect = !renewable && _loginType == 2;
             final data = await _request(
                 Map.of(_cookies),
-                'music.login.LoginServer',
-                'Login',
+                connect
+                    ? 'QQConnectLogin.LoginServer'
+                    : 'music.login.LoginServer',
+                connect ? 'QQLogin' : 'Login',
                 {
-                  ..._refreshFields,
+                  if (!connect) ...{
+                    for (final name in [
+                      'openid',
+                      'unionid',
+                      'access_token',
+                      'refresh_token',
+                      'refresh_key'
+                    ])
+                      if (_refreshFields[name] != null)
+                        name: _refreshFields[name],
+                    'expired_in': _refreshFields['expired_in'] ??
+                        _refreshFields['expired_at'] ??
+                        0,
+                    'loginMode': 2,
+                  },
                   'musicid': int.tryParse(bound) ?? 0,
                   'str_musicid': bound,
                   'musickey': key,
-                  'loginMode': 2,
                 },
                 auth: true);
             final nextKey = '${data['musickey'] ?? ''}',
@@ -421,14 +556,17 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
             if (nextKey.isNotEmpty && nextId == bound && current()) {
               final next = Map<String, String>.of(_cookies)
                 ..['qqmusic_key'] = nextKey;
-              final refresh = Map<String, dynamic>.of(_refreshFields);
-              for (final name in _refreshNames) {
-                if (data[name] is String || data[name] is num)
-                  refresh[name] = data[name];
-              }
+              if (next.containsKey('qm_keyst')) next['qm_keyst'] = nextKey;
+              final refresh = QqSessionMetadata.issued(data, _now(),
+                  previous: _refreshFields);
+              refresh['renewalMethod'] = connect ? 'musicKey' : 'login';
+              refresh['lastRenewalAt'] = _now().millisecondsSinceEpoch ~/ 1000;
+              refresh['lastRenewalKeyChanged'] = nextKey == key ? 0 : 1;
               recovered = await acceptSession(_stored(next, refresh),
-                  isCurrent: current);
+                  isCurrent: current, preserveLibrary: true);
             }
+          } on QqAuthExpired {
+            renewalRejected = true;
           } catch (_) {/* A browser session may still recover this account. */}
         }
 
@@ -438,15 +576,23 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
             final candidate = _session(web).$1;
             if (_account(candidate) == bound &&
                 (candidate['qqmusic_key'] ?? candidate['qm_keyst']) != key) {
-              recovered = await acceptSession(web, isCurrent: current);
+              recovered = await acceptSession(web,
+                  isCurrent: current, preserveLibrary: true);
             }
           }
         }
+      } on QqAuthExpired {
+        renewalRejected = true;
       } catch (_) {
         /* Keep the last saved credentials; never erase on failed renewal. */
       } finally {
         if (current()) {
-          sessionNeedsLogin = !recovered;
+          if (!recovered) {
+            if (_recoveryAuthFailed) sessionNeedsLogin = true;
+            _renewalRejected = renewalRejected;
+            _retryRenewalAt = _now().add(const Duration(minutes: 5));
+          }
+          _scheduleRenewal();
           _notify();
         }
         _recovering = null;
@@ -458,7 +604,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<Map> _request(Map<String, String> cookies, String module,
       String method, Map<String, dynamic> param,
-      {CancelToken? cancelToken, bool auth = false}) async {
+      {CancelToken? cancelToken, bool auth = false, int? loginType}) async {
     final account = _account(cookies);
     final key = cookies['qqmusic_key'] ?? cookies['qm_keyst'] ?? '';
     final signedIn = account.isNotEmpty && key.isNotEmpty;
@@ -474,7 +620,8 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
         'format': 'json',
         'uin': account.isEmpty ? '0' : account,
         if (key.isNotEmpty) 'authst': key,
-        'tmeLoginType': int.tryParse(cookies['tmeLoginType'] ?? '') ??
+        'tmeLoginType': loginType ??
+            int.tryParse(cookies['tmeLoginType'] ?? '') ??
             (key.startsWith('W_X') ? 1 : 2)
       },
       'req_0': {'module': module, 'method': method, 'param': param}
@@ -683,6 +830,23 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
       if (!allowFallback && !basename.startsWith(format.$1)) continue;
       return QqAudio(
           url.replace(scheme: 'https').toString(), actual.$1, actual.$2);
+    }
+    if (loggedIn) {
+      if (sessionNeedsLogin) throw const QqAuthExpired();
+      final before = key;
+      try {
+        await refreshProfile();
+        if (key != before) {
+          return audio(track, preferred,
+              cancelToken: cancelToken,
+              allowFallback: allowFallback,
+              qualityTimeout: qualityTimeout);
+        }
+      } on QqAuthExpired {
+        rethrow;
+      } catch (_) {
+        /* Profile network failures do not prove an expired session. */
+      }
     }
     throw const MusicServiceError('QQ音乐暂无可用完整音源，请检查登录、会员权限或切换歌曲');
   }
@@ -939,6 +1103,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
+    _renewalTimer?.cancel();
     client.close(force: true);
     super.dispose();
   }
