@@ -18,6 +18,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
   QqMusic(
       {Dio? dio,
       this.channel = const MethodChannel('buyu/qqmusic'),
+      this.manageLifecycle = true,
       DateTime Function()? now})
       : _now = now ?? DateTime.now,
         client = dio ??
@@ -25,7 +26,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
                 connectTimeout: const Duration(seconds: 10),
                 receiveTimeout: const Duration(seconds: 15),
                 sendTimeout: const Duration(seconds: 15))) {
-    WidgetsBinding.instance.addObserver(this);
+    if (manageLifecycle) WidgetsBinding.instance.addObserver(this);
   }
   static QqMusic get instance {
     if (!GetIt.I.isRegistered<QqMusic>())
@@ -45,6 +46,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   final Dio client;
   final MethodChannel channel;
+  final bool manageLifecycle;
   final DateTime Function() _now;
   Timer? _renewalTimer;
   DateTime? _loadedAt, _retryRenewalAt;
@@ -477,7 +479,17 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
     return recoverSession(authenticationFailed: false);
   }
 
+  /// Run by Android when the application receives a background renewal window.
+  /// A transient failure asks Android to retry using its system backoff.
+  Future<bool> shouldRetryBackgroundRenewal() async {
+    await restore();
+    if (!automaticRenewalAvailable) return false;
+    final renewed = await refreshSessionIfNeeded();
+    return !renewed && !_renewalRejected;
+  }
+
   void _scheduleRenewal() {
+    if (!manageLifecycle) return;
     _renewalTimer?.cancel();
     if (_disposed ||
         !loggedIn ||
@@ -1101,7 +1113,7 @@ class QqMusic extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    if (manageLifecycle) WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _renewalTimer?.cancel();
     client.close(force: true);

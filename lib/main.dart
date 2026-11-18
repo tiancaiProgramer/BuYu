@@ -38,6 +38,23 @@ import 'package:window_manager/window_manager.dart';
 
 import 'common/constants/colors.dart';
 
+const _qqRenewalChannel = MethodChannel('buyu/qq-renewal');
+
+@pragma('vm:entry-point')
+Future<void> renewQqInBackground() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final qq = QqMusic(manageLifecycle: false);
+  var shouldRetry = true;
+  try {
+    shouldRetry = await qq.shouldRetryBackgroundRenewal();
+  } catch (_) {
+    // Android can retry once protected storage is available.
+  } finally {
+    qq.dispose();
+  }
+  await _qqRenewalChannel.invokeMethod<void>('complete', shouldRetry);
+}
+
 main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final getIt = GetIt.instance;
@@ -181,6 +198,10 @@ Future<void> _initAudioServer(getIt) async {
   await AppearanceStore(getIt<Box>()).migrate();
   await NeteaseMusicApi.init(debug: false);
   final qq = QqMusic.instance;
+  _qqRenewalChannel.setMethodCallHandler((call) async {
+    if (call.method != 'renew') throw MissingPluginException();
+    return qq.shouldRetryBackgroundRenewal();
+  });
   try { await qq.restore(); } catch (_) { /* Retry protected storage on the next QQ operation. */ }
   if (qq.loggedIn) qq.refreshProfile().catchError((_) {});
   if (const bool.fromEnvironment('BUYU_DISCOVERY_PROBE')) {

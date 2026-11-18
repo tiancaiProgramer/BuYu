@@ -30,6 +30,33 @@ class _Qq extends QqMusic {
   void update(bool value) { signed = value; notifyListeners(); }
 }
 
+class _RenewalQq extends _Qq {
+  _RenewalQq({required this.canRenew, required this.rejectedOnCheck});
+
+  final bool canRenew;
+  final bool rejectedOnCheck;
+  int renewalChecks = 0;
+  int webLogins = 0;
+
+  @override
+  bool get automaticRenewalAvailable => canRenew;
+
+  @override
+  Future<bool> refreshSessionIfNeeded({bool force = false}) async {
+    expect(force, isTrue);
+    renewalChecks++;
+    sessionNeedsLogin = rejectedOnCheck;
+    return false;
+  }
+
+  @override
+  Future<bool> login({bool fresh = false}) async {
+    expect(fresh, isTrue);
+    webLogins++;
+    return false;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('buyu/profile-test');
@@ -94,6 +121,62 @@ void main() {
     expect(box.get(QqMusic.profileCacheKey), isNull);
     qq.dispose();
   });
+
+  for (final scenario in ['expired', 'missing', 'rejected', 'retry']) {
+    testWidgets('QQ renewal reauthentication begins with QR ($scenario)',
+        (tester) async {
+      final box = MemoryBox();
+      final qq = _RenewalQq(
+          canRenew: scenario != 'missing',
+          rejectedOnCheck: scenario == 'rejected');
+      qq.sessionNeedsLogin = scenario == 'expired';
+      final audio = (await tester.runAsync(() async => BujuanAudioHandler(
+          player: FakePlayer(), box: box, restoreQueue: false)))!;
+      GetIt.I.registerSingleton<Box>(box);
+      GetIt.I.registerSingleton<QqMusic>(qq, dispose: (qq) => qq.dispose());
+      GetIt.I.registerSingleton<BujuanAudioHandler>(audio);
+      GetIt.I.registerSingleton<ZoomDrawerController>(ZoomDrawerController());
+      Home? home;
+      await tester.pumpWidget(ScreenUtilInit(
+          designSize: const Size(750, 1334),
+          builder: (_, __) {
+            home ??= Get.put<Home>(OfflineHome());
+            return GetMaterialApp(
+                theme: AppTheme.light, home: const MusicAccountsView());
+          }));
+      await tester.pumpAndSettle();
+
+      final entry = switch (scenario) {
+        'expired' => 'QQ登录凭据已失效',
+        'missing' => '补齐QQ登录续期',
+        _ => 'QQ登录自动续期',
+      };
+      await tester.ensureVisible(find.text(entry));
+      await tester.tap(find.text(entry));
+      await tester.pumpAndSettle();
+      if (scenario == 'retry') {
+        expect(find.text('音乐账号与收藏'), findsOneWidget);
+        await tester.tap(find.text('扫码认证'));
+        await tester.pumpAndSettle();
+      }
+
+      expect(qq.renewalChecks,
+          scenario == 'rejected' || scenario == 'retry' ? 1 : 0);
+      expect(qq.webLogins, 0);
+      expect(qq.loggedIn, isTrue);
+      expect(find.text('登录QQ音乐'), findsOneWidget);
+      expect(find.text('刷新二维码'), findsOneWidget);
+      final web = find.text('官方网页登录');
+      await tester.ensureVisible(web);
+      await tester.tap(web);
+      await tester.pumpAndSettle();
+      expect(qq.webLogins, 1);
+      expect(find.text('刷新二维码'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(audio.dispose);
+      Get.reset();
+    });
+  }
 
   for (final size in [const Size(390, 844), const Size(844, 390)]) {
     testWidgets('dual account avatar source persists, updates and falls back at $size',

@@ -30,6 +30,7 @@ class LoginViewPage extends StatefulWidget {
       this.webLogin,
       this.initialSource = MusicSource.netease,
       this.autoQr = true,
+      this.reauthenticateQq = false,
       this.statusReader,
       this.signOut,
       this.qqQrFactory})
@@ -40,6 +41,7 @@ class LoginViewPage extends StatefulWidget {
   final QqQrLogin Function()? qqQrFactory;
   final MusicSource initialSource;
   final bool autoQr;
+  final bool reauthenticateQq;
   final ApiLogin? api;
   final Future<bool> Function()? webLogin;
 
@@ -62,14 +64,20 @@ class _LoginViewStateP extends State<LoginViewPage> {
   Uint8List? _qqImage;
   bool _completedNet = false;
   bool _completedQq = false;
+  late bool _reauthenticateQq = widget.reauthenticateQq;
   Worker? _accountWorker;
-  bool _signedIn(MusicSource source) =>
-      widget.statusReader?.call(source) ??
-      (source == MusicSource.qq
-          ? QqMusic.instance.loggedIn || _completedQq
-          : Get.isRegistered<Home>()
-              ? Home.to.loginStatus.value == LoginStatus.login
-              : _completedNet);
+  bool _signedIn(MusicSource source) {
+    if (source == MusicSource.qq &&
+        (_reauthenticateQq || QqMusic.instance.sessionNeedsLogin)) {
+      return false;
+    }
+    return widget.statusReader?.call(source) ??
+        (source == MusicSource.qq
+            ? QqMusic.instance.loggedIn || _completedQq
+            : Get.isRegistered<Home>()
+                ? Home.to.loginStatus.value == LoginStatus.login
+                : _completedNet);
+  }
   MusicSource get _other =>
       _source == MusicSource.qq ? MusicSource.netease : MusicSource.qq;
   void _accountsChanged() {
@@ -80,6 +88,7 @@ class _LoginViewStateP extends State<LoginViewPage> {
     _stopQr();
     setState(() {
       if (_source == MusicSource.qq) {
+        _reauthenticateQq = false;
         _completedQq = true;
       } else {
         _completedNet = true;
@@ -246,7 +255,10 @@ class _LoginViewStateP extends State<LoginViewPage> {
         setState(() =>
             _message = e is MusicServiceError ? e.message : 'QQ网页登录未完成，请重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        if (_reauthenticateQq) unawaited(_refreshCurrent());
+      }
     }
   }
 

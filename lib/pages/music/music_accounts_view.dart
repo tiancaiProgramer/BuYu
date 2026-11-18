@@ -34,25 +34,13 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
     });
   }
 
-  Future<void> login({bool fresh = false}) async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      if (await qq.login(fresh: fresh)) {
-        try {
-          await qq.userPlaylists();
-        } catch (_) {
-          error = 'QQ音乐已登录，歌单暂未加载，稍后可重新同步';
-        }
-        await UnifiedLibrary.instance.sync();
-      }
-    } catch (e) {
-      error = e is MusicServiceError ? e.message : 'QQ音乐登录未完成，请在官方页面完成认证后重试';
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
+  Future<void> openQqLogin({bool reauthenticate = false}) async {
+    if (!mounted || busy) return;
+    if (error != null) setState(() => error = null);
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => LoginViewPage(
+            initialSource: MusicSource.qq,
+            reauthenticateQq: reauthenticate)));
   }
 
   Future<void> chooseProfileSource() async {
@@ -96,16 +84,26 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
       busy = true;
       error = null;
     });
+    var reauthenticate = false;
     try {
       final renewed = await qq.refreshSessionIfNeeded(force: true);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(renewed ? 'QQ登录续期成功' : '暂未完成续期，已保留当前登录。请检查网络，或重新认证。')));
+      reauthenticate = !renewed && qq.sessionNeedsLogin;
+      if (!reauthenticate) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(renewed ? 'QQ登录续期成功' : '暂未完成续期，已保留当前登录。'),
+            action: renewed
+                ? null
+                : SnackBarAction(
+                    label: '扫码认证',
+                    onPressed: () => openQqLogin(reauthenticate: true))));
+      }
     } catch (_) {
       if (mounted) setState(() => error = 'QQ登录续期暂未完成，请稍后重试');
     } finally {
       if (mounted) setState(() => busy = false);
     }
+    if (reauthenticate) await openQqLogin(reauthenticate: true);
   }
 
   @override
@@ -151,22 +149,15 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                         ? (qq.nickname.isEmpty ? '已登录QQ音乐' : qq.nickname)
                         : '未登录'),
                     trailing: TextButton(
-                        onPressed: busy
-                            ? null
-                            : () async {
-                                await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                        builder: (_) => const LoginViewPage(
-                                            initialSource: MusicSource.qq)));
-                                if (mounted) setState(() {});
-                              },
-                        child: Text(busy ? '正在登录…' : '登录 / 切换'))),
+                        onPressed: busy ? null : openQqLogin,
+                        child: const Text('登录 / 切换'))),
                 if (qq.sessionNeedsLogin)
                   ListTile(
                       leading: const Icon(Icons.sync_problem),
                       title: const Text('QQ登录凭据已失效'),
                       subtitle: const Text('本地收藏已保留，可重新认证后恢复'),
-                      onTap: busy ? null : () => login(fresh: true)),
+                      onTap:
+                          busy ? null : () => openQqLogin(reauthenticate: true)),
                 if (qq.loggedIn && !qq.sessionNeedsLogin)
                   ListTile(
                       leading: const Icon(Icons.autorenew),
@@ -182,7 +173,7 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                           ? null
                           : qq.automaticRenewalAvailable
                               ? checkQqRenewal
-                              : () => login(fresh: true)),
+                              : () => openQqLogin(reauthenticate: true)),
                 if (qq.loggedIn)
                   ListTile(
                       title: const Text('退出QQ音乐登录'),
@@ -210,8 +201,8 @@ class _MusicAccountsViewState extends State<MusicAccountsView> {
                       padding: const EdgeInsets.all(16), child: Text(error!)),
                 if (error != null)
                   TextButton(
-                      onPressed: busy ? null : () => login(fresh: true),
-                      child: const Text('重新打开官方登录')),
+                      onPressed: busy ? null : () => openQqLogin(reauthenticate: true),
+                      child: const Text('重新扫码登录')),
                 ListTile(
                     leading: const Icon(TablerIcons.heart),
                     title: const Text('聚合收藏'),

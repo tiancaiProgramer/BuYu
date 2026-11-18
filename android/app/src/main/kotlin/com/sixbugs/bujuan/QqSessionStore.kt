@@ -38,6 +38,12 @@ class QqSessionStore(private val context: Context) {
             atomic.finishWrite(stream)
         } catch (error: Exception) { atomic.failWrite(stream); throw error }
     }
+    fun saveAndUpdateWeb(value: String) {
+        save(value)
+        // The encrypted store is authoritative if browser cookie sync is unavailable.
+        try { QqWebSession.update(value) } catch (_: Exception) { }
+    }
+
     @Synchronized fun read(): String? {
         if (Build.VERSION.SDK_INT < 23) return memory
         if (!file.exists() && !java.io.File(file.path + ".bak").exists()) return null

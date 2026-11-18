@@ -9,7 +9,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: AudioServiceActivity() {
     private var audioDownloads: AudioDownloads? = null
     private var qqResult: MethodChannel.Result? = null
-    private var qqStore: QqSessionStore? = null
     private var webLoginResult: MethodChannel.Result? = null
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == 7932) {
@@ -28,20 +27,27 @@ class MainActivity: AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val sessionStore = QqSessionStore(this)
-        qqStore = sessionStore
+        QqBackgroundRenewal.attach(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "buyu/qqmusic").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
-                    "readSession" -> result.success(sessionStore.read())
+                    "readSession" -> {
+                        val session = sessionStore.read()
+                        if (session != null) QqBackgroundRenewal.schedule(applicationContext)
+                        result.success(session)
+                    }
                     "readWebSession" -> result.success(QqWebSession.read())
                     "saveSession" -> {
                         val session = call.arguments as String
-                        sessionStore.save(session)
-                        // Encrypted storage is authoritative; browser sync is best effort.
-                        try { QqWebSession.update(session) } catch (_: Exception) { }
+                        sessionStore.saveAndUpdateWeb(session)
+                        QqBackgroundRenewal.schedule(applicationContext)
                         result.success(null)
                     }
-                    "clearSession" -> { sessionStore.clear(); QqWebSession.clear { result.success(null) } }
+                    "clearSession" -> {
+                        sessionStore.clear()
+                        QqBackgroundRenewal.cancel(applicationContext)
+                        QqWebSession.clear { result.success(null) }
+                    }
                     "login" -> if (qqResult != null) result.error("busy", "QQ登录页已打开", null) else {
                         qqResult = result
                         try { startActivityForResult(Intent(this,QqLoginActivity::class.java),7932) }

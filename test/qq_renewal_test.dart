@@ -472,4 +472,72 @@ void main() {
     expect(q.sessionNeedsLogin, true);
     q.dispose();
   });
+
+  test('background work waits until the key is due, then persists renewal',
+      () async {
+    var clock = epoch;
+    var exchanges = 0, saves = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'readSession') {
+        return session(QqSessionMetadata.issued(issued(), epoch));
+      }
+      if (call.method == 'saveSession') saves++;
+      return null;
+    });
+    final dio = Dio()
+      ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.method == 'GET') {
+          handler.resolve(Response(requestOptions: options, data: profiles));
+          return;
+        }
+        exchanges++;
+        handler.resolve(Response(
+            requestOptions: options,
+            data: response({
+              ...issued(),
+              'musickeyCreateTime': clock.millisecondsSinceEpoch ~/ 1000,
+            })));
+      }));
+    final qq = QqMusic(
+        channel: channel, dio: dio, manageLifecycle: false, now: () => clock);
+    addTearDown(qq.dispose);
+    expect(await qq.shouldRetryBackgroundRenewal(), false);
+    expect(exchanges, 0);
+    clock = epoch.add(const Duration(minutes: 31));
+    expect(await qq.shouldRetryBackgroundRenewal(), false);
+    expect(exchanges, 1);
+    expect(saves, 1);
+    expect(qq.hasVerifiedRenewal, true);
+  });
+
+  for (final networkFailure in [true, false]) {
+    test(
+        'background retry after ${networkFailure ? 'offline' : 'QQ rejection'}',
+        () async {
+      messenger.setMockMethodCallHandler(
+          channel,
+          (call) async => call.method == 'readSession'
+              ? session(QqSessionMetadata.issued(issued(), epoch))
+              : null);
+      final dio = Dio()
+        ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+          if (networkFailure) {
+            handler.reject(DioException(
+                requestOptions: options,
+                type: DioExceptionType.connectionError));
+            return;
+          }
+          handler
+              .resolve(Response(requestOptions: options, data: {'code': 1000}));
+        }));
+      final qq = QqMusic(
+          channel: channel,
+          dio: dio,
+          manageLifecycle: false,
+          now: () => epoch.add(const Duration(minutes: 31)));
+      addTearDown(qq.dispose);
+      expect(await qq.shouldRetryBackgroundRenewal(), networkFailure);
+      expect(qq.key, 'old-fixture');
+    });
+  }
 }
